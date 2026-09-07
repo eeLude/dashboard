@@ -1,24 +1,17 @@
 import { createClient } from "@supabase/supabase-js";
 import { NextRequest, NextResponse } from "next/server";
+import { lookupArtistGenres } from "@/lib/artist-genre";
 import {
-  applyNameGenreLookup,
-  ITUNES_GENRE_LOOKUP_LIMIT,
-  lookupArtistGenres,
-} from "@/lib/artist-genre";
-import {
-  applyArtistGenreLookup,
-  mapSpotifyStats,
   parseSpotifyTimeRange,
+  type MusicAlbum,
+  type MusicArtist,
+  type MusicTrack,
+  type SpotifyStats,
 } from "@/lib/spotify";
 import type { Database } from "@/types/database";
 
-type TokenResponse = {
-  access_token?: string;
-  refresh_token?: string;
-  error?: string;
-};
-
-type Paging<T> = { items?: T[] };
+const LASTFM_BASE = "https://ws.audioscrobbler.com/2.0/";
+const DEFAULT_TRACK_DURATION_SEC = 210; // 3.5 minutes fallback if duration not given
 
 function supabaseForUser(accessToken: string) {
   return createClient<Database>(
@@ -31,37 +24,39 @@ function supabaseForUser(accessToken: string) {
   );
 }
 
-async function refreshSpotifyAccessToken(
-  clientId: string,
-  clientSecret: string,
-  refreshToken: string
-): Promise<{ accessToken: string; refreshToken: string } | null> {
-  const params = new URLSearchParams({
-    grant_type: "refresh_token",
-    refresh_token: refreshToken,
-  });
-  const res = await fetch("https://accounts.spotify.com/api/token", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/x-www-form-urlencoded",
-      Authorization: `Basic ${Buffer.from(`${clientId}:${clientSecret}`).toString("base64")}`,
-    },
-    body: params,
-  });
-  const data = (await res.json()) as TokenResponse;
-  if (!res.ok || !data.access_token) return null;
-  return {
-    accessToken: data.access_token,
-    refreshToken: data.refresh_token ?? refreshToken,
-  };
-}
+type LastFmImage = { "#text"?: string; size?: string };
+
+type LastFmArtistItem = {
+  name: string;
+  playcount?: string;
+  mbid?: string;
+  url?: string;
+  image?: LastFmImage[];
+};
+
+type LastFmTrackItem = {
+  name: string;
+  playcount?: string;
+  duration?: string;
+  mbid?: string;
+  artist?: { name?: string; mbid?: string; url?: string };
+};
+
+type LastFmAlbumItem = {
+  name: string;
+  playcount?: string;
+  mbid?: string;
+  artist?: { name?: string; mbid?: string };
+  image?: LastFmImage[];
+};
 
 export async function GET(request: NextRequest) {
-  const clientId = process.env.NEXT_PUBLIC_SPOTIFY_CLIENT_ID;
-  const clientSecret = process.env.SPOTIFY_CLIENT_SECRET;
-  if (!clientId || !clientSecret) {
+  const apiKey = process.env.LASTFM_API_KEY;
+  const username = process.env.LASTFM_USERNAME;
+
+  if (!apiKey || !username) {
     return NextResponse.json(
-      { error: "Spotify is not configured." },
+      { error: "Last.fm is not configured in .env.local." },
       { status: 503 }
     );
   }
@@ -72,116 +67,162 @@ export async function GET(request: NextRequest) {
   }
 
   const supabase = supabaseForUser(jwt);
-  const { data: row, error } = await supabase
-    .from("spotify_tokens")
-    .select("refresh_token")
-    .maybeSingle();
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser();
 
-  if (error) {
-    return NextResponse.json(
-      {
-        error:
-          "Could not load Spotify. Run supabase/migrate-spotify.sql if the table is missing.",
-      },
-      { status: 500 }
-    );
-  }
-  if (!row) {
-    return NextResponse.json({ connected: false }, { status: 404 });
-  }
-
-  const refreshed = await refreshSpotifyAccessToken(
-    clientId,
-    clientSecret,
-    row.refresh_token
-  );
-  if (!refreshed) {
-    await supabase.from("spotify_tokens").delete();
-    return NextResponse.json({ connected: false }, { status: 404 });
-  }
-
-  if (refreshed.refreshToken !== row.refresh_token) {
-    await supabase
-      .from("spotify_tokens")
-      .update({
-        refresh_token: refreshed.refreshToken,
-        updated_at: new Date().toISOString(),
-      })
-      .eq("refresh_token", row.refresh_token);
+  if (authError || !user) {
+    return NextResponse.json({ error: "Not authenticated." }, { status: 401 });
   }
 
   const timeRange = parseSpotifyTimeRange(
     request.nextUrl.searchParams.get("time_range")
   );
 
-  const headers = { Authorization: `Bearer ${refreshed.accessToken}` };
-  const [artistsRes, tracksRes] = await Promise.all([
-    fetch(
-      `https://api.spotify.com/v1/me/top/artists?time_range=${timeRange}&limit=50`,
-      { headers }
-    ),
-    fetch(
-      `https://api.spotify.com/v1/me/top/tracks?time_range=${timeRange}&limit=5`,
-      { headers }
-    ),
+  const artistUrl = `${LASTFM_BASE}?method=user.gettopartists&user=${encodeURIComponent(
+    username
+  )}&api_key=${apiKey}&period=${timeRange}&limit=10&format=json`;
+
+  const trackUrl = `${LASTFM_BASE}?method=user.gettoptracks&user=${encodeURIComponent(
+    username
+  )}&api_key=${apiKey}&period=${timeRange}&limit=50&format=json`;
+
+  const albumUrl = `${LASTFM_BASE}?method=user.gettopalbums&user=${encodeURIComponent(
+    username
+  )}&api_key=${apiKey}&period=${timeRange}&limit=6&format=json`;
+
+  const infoUrl = `${LASTFM_BASE}?method=user.getinfo&user=${encodeURIComponent(
+    username
+  )}&api_key=${apiKey}&format=json`;
+
+  const [artistsRes, tracksRes, albumsRes, infoRes] = await Promise.all([
+    fetch(artistUrl, { next: { revalidate: 300 } }),
+    fetch(trackUrl, { next: { revalidate: 300 } }),
+    fetch(albumUrl, { next: { revalidate: 300 } }),
+    fetch(infoUrl, { next: { revalidate: 300 } }),
   ]);
 
   if (!artistsRes.ok || !tracksRes.ok) {
     return NextResponse.json(
-      { error: "Could not load Spotify stats." },
+      { error: "Could not load music stats from Last.fm." },
       { status: 502 }
     );
   }
 
-  const artistsJson = (await artistsRes.json()) as Paging<{
-    id: string;
-    name: string;
-    genres?: string[];
-    images?: { url: string }[];
-  }>;
-  const tracksJson = (await tracksRes.json()) as Paging<{
-    id: string;
-    name: string;
-    artists?: { name: string; id?: string }[];
-  }>;
+  const [artistsJson, tracksJson, albumsJson, infoJson] = await Promise.all([
+    artistsRes.json().catch(() => ({})) as Promise<{
+      topartists?: { artist?: LastFmArtistItem[] };
+    }>,
+    tracksRes.json().catch(() => ({})) as Promise<{
+      toptracks?: { track?: LastFmTrackItem[] };
+    }>,
+    (albumsRes.ok
+      ? albumsRes.json().catch(() => ({}))
+      : Promise.resolve({})) as Promise<{
+      topalbums?: { album?: LastFmAlbumItem[] };
+    }>,
+    (infoRes.ok
+      ? infoRes.json().catch(() => ({}))
+      : Promise.resolve({})) as Promise<{
+      user?: { playcount?: string };
+    }>,
+  ]);
 
-  let artistItems = artistsJson.items ?? [];
-  const missingIds = [
-    ...new Set(
-      artistItems
-        .filter((artist) => !(artist.genres ?? []).length)
-        .map((artist) => artist.id)
-    ),
-  ].slice(0, 50);
+  const rawArtists: LastFmArtistItem[] =
+    artistsJson?.topartists?.artist ?? [];
+  const rawTracks: LastFmTrackItem[] =
+    tracksJson?.toptracks?.track ?? [];
+  const rawAlbums: LastFmAlbumItem[] =
+    albumsJson?.topalbums?.album ?? [];
 
-  if (missingIds.length > 0) {
-    const lookupRes = await fetch(
-      `https://api.spotify.com/v1/artists?ids=${missingIds.join(",")}`,
-      { headers }
-    );
-    if (lookupRes.ok) {
-      const lookupJson = (await lookupRes.json()) as {
-        artists?: { id: string; genres?: string[] }[];
-      };
-      artistItems = applyArtistGenreLookup(
-        artistItems,
-        lookupJson.artists ?? []
-      );
+  // Duration & Scrobbles calculation
+  let knownDurSum = 0;
+  let knownDurCount = 0;
+  for (const t of rawTracks) {
+    const dur = parseInt(t.duration || "0", 10);
+    if (dur >= 30 && dur <= 1800) {
+      knownDurSum += dur;
+      knownDurCount++;
+    }
+  }
+  const avgDuration =
+    knownDurCount > 0
+      ? Math.round(knownDurSum / knownDurCount)
+      : DEFAULT_TRACK_DURATION_SEC;
+
+  let totalSeconds = 0;
+  let totalPlays = 0;
+  for (const t of rawTracks) {
+    const count = parseInt(t.playcount || "1", 10);
+    totalPlays += count;
+    const dur = parseInt(t.duration || "0", 10);
+    totalSeconds += (dur > 0 ? dur : avgDuration) * count;
+  }
+  const totalMinutes = Math.round(totalSeconds / 60);
+
+  // Top Artists
+  const artists: MusicArtist[] = rawArtists.slice(0, 5).map((a, i) => ({
+    id: a.mbid || `${a.name}-${i}`,
+    name: a.name,
+    plays: parseInt(a.playcount || "0", 10),
+  }));
+
+  // Top Tracks
+  const tracks: MusicTrack[] = rawTracks.slice(0, 5).map((t, i) => ({
+    id: t.mbid || `${t.name}-${t.artist?.name ?? i}`,
+    name: t.name,
+    artist: t.artist?.name || "Unknown Artist",
+    plays: parseInt(t.playcount || "0", 10),
+  }));
+
+  // Top Albums
+  const albums: MusicAlbum[] = rawAlbums.slice(0, 4).map((al, i) => {
+    const imgObj =
+      al.image?.find((img) => img.size === "extralarge" || img.size === "large") ||
+      al.image?.find((img) => img.size === "medium");
+    const rawUrl = imgObj?.["#text"]?.trim();
+    return {
+      id: al.mbid || `${al.name}-${al.artist?.name ?? i}`,
+      name: al.name,
+      artist: al.artist?.name || "",
+      plays: parseInt(al.playcount || "0", 10),
+      imageUrl: rawUrl && rawUrl.startsWith("http") ? rawUrl : null,
+    };
+  });
+
+  // Genres from Apple Search lookup
+  const artistNames = rawArtists.slice(0, 10).map((a) => a.name);
+  const genresByName = await lookupArtistGenres(artistNames);
+
+  const genreCounts = new Map<string, number>();
+  for (const a of rawArtists) {
+    const plays = parseInt(a.playcount || "1", 10);
+    const g = genresByName.get(a.name.toLowerCase().trim());
+    if (g) {
+      genreCounts.set(g, (genreCounts.get(g) ?? 0) + plays);
     }
   }
 
-  const stillMissing = artistItems.filter(
-    (artist) => !(artist.genres ?? []).length
-  );
-  if (stillMissing.length > 0) {
-    const itunes = await lookupArtistGenres(
-      stillMissing.slice(0, ITUNES_GENRE_LOOKUP_LIMIT).map((artist) => artist.name)
-    );
-    artistItems = applyNameGenreLookup(artistItems, itunes);
-  }
+  const topGenres = [...genreCounts.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .map(([name]) => name);
 
-  return NextResponse.json({
+  const allTimeScrobbles = infoJson?.user?.playcount
+    ? parseInt(infoJson.user.playcount, 10)
+    : null;
+
+  const payload: SpotifyStats = {
     connected: true,
-    ...mapSpotifyStats(artistItems, tracksJson.items ?? []),
-  });
+    totalPlays,
+    totalMinutes,
+    allTimeScrobbles,
+    topGenre: topGenres[0] ?? null,
+    genres: topGenres.slice(0, 8),
+    artists,
+    tracks,
+    albums,
+  };
+
+  return NextResponse.json(payload);
 }

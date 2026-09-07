@@ -2,40 +2,80 @@ export const SPOTIFY_SCOPES = "user-top-read";
 export const PKCE_VERIFIER_KEY = "spotify_pkce_verifier";
 export const PKCE_STATE_KEY = "spotify_pkce_state";
 
-export type SpotifyTimeRange = "short_term" | "medium_term" | "long_term";
+export type SpotifyTimeRange = "7day" | "1month" | "6month" | "12month";
 
 export const SPOTIFY_TIME_RANGES: {
   id: SpotifyTimeRange;
-  label: string;
+  labelEn: string;
+  labelFi: string;
 }[] = [
-  { id: "short_term", label: "4 wk" },
-  { id: "medium_term", label: "6 mo" },
-  { id: "long_term", label: "Year" },
+  { id: "7day", labelEn: "7d", labelFi: "7 pv" },
+  { id: "1month", labelEn: "1 mo", labelFi: "1 kk" },
+  { id: "6month", labelEn: "6 mo", labelFi: "6 kk" },
+  { id: "12month", labelEn: "Year", labelFi: "1 v" },
 ];
 
 export function parseSpotifyTimeRange(value: string | null): SpotifyTimeRange {
-  if (value === "medium_term" || value === "long_term") return value;
-  return "short_term";
+  if (value === "1month" || value === "30d" || value === "1m") return "1month";
+  if (value === "6month" || value === "medium_term" || value === "6m") return "6month";
+  if (
+    value === "12month" ||
+    value === "long_term" ||
+    value === "1year" ||
+    value === "1y" ||
+    value === "year"
+  ) {
+    return "12month";
+  }
+  return "7day";
 }
 
-export type SpotifyArtist = {
+export function formatListeningMinutes(
+  minutes: number,
+  locale: "en" | "fi"
+): string {
+  if (minutes < 60) {
+    return locale === "fi" ? `${minutes} min` : `${minutes}m`;
+  }
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  if (m === 0) {
+    return locale === "fi" ? `${h} h` : `${h}h`;
+  }
+  return locale === "fi" ? `${h} h ${m} min` : `${h}h ${m}m`;
+}
+
+export type MusicArtist = {
   id: string;
   name: string;
-  imageUrl: string | null;
-  genres: string[];
+  plays: number;
 };
 
-export type SpotifyTrack = {
+export type MusicTrack = {
   id: string;
   name: string;
   artist: string;
+  plays: number;
+};
+
+export type MusicAlbum = {
+  id: string;
+  name: string;
+  artist: string;
+  plays: number;
+  imageUrl: string | null;
 };
 
 export type SpotifyStats = {
-  artists: SpotifyArtist[];
-  tracks: SpotifyTrack[];
-  genres: string[];
+  connected: boolean;
+  totalPlays: number;
+  totalMinutes: number;
+  allTimeScrobbles: number | null;
   topGenre: string | null;
+  genres: string[];
+  artists: MusicArtist[];
+  tracks: MusicTrack[];
+  albums: MusicAlbum[];
 };
 
 type SpotifyImage = { url: string };
@@ -107,48 +147,7 @@ export function takePkceFromStorage(stateFromUrl: string | null): {
   }
   return { verifier };
 }
+export type SpotifyArtist = MusicArtist;
+export type SpotifyTrack = MusicTrack;
+export type SpotifyAlbum = MusicAlbum;
 
-export function applyArtistGenreLookup<T extends { id: string; genres?: string[] }>(
-  artists: T[],
-  lookup: { id: string; genres?: string[] }[]
-): T[] {
-  const byId = new Map(lookup.map((row) => [row.id, row]));
-  return artists.map((artist) => {
-    if ((artist.genres ?? []).length > 0) return artist;
-    const extra = byId.get(artist.id);
-    if (!extra?.genres?.length) return artist;
-    return { ...artist, genres: extra.genres };
-  });
-}
-
-export function mapSpotifyStats(
-  artistItems: SpotifyApiArtist[],
-  trackItems: SpotifyApiTrack[]
-): SpotifyStats {
-  const artists: SpotifyArtist[] = artistItems.slice(0, 5).map((artist) => ({
-    id: artist.id,
-    name: artist.name,
-    imageUrl: artist.images?.[0]?.url ?? null,
-    genres: artist.genres ?? [],
-  }));
-
-  const tracks: SpotifyTrack[] = trackItems.slice(0, 5).map((track) => ({
-    id: track.id,
-    name: track.name,
-    artist: (track.artists ?? []).map((a) => a.name).join(", "),
-  }));
-
-  const counts = new Map<string, number>();
-  for (let i = 0; i < artistItems.length; i++) {
-    const weight = artistItems.length - i;
-    for (const genre of artistItems[i].genres ?? []) {
-      counts.set(genre, (counts.get(genre) ?? 0) + weight);
-    }
-  }
-  const genres = [...counts.entries()]
-    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
-    .slice(0, 8)
-    .map(([genre]) => genre);
-
-  return { artists, tracks, genres, topGenre: genres[0] ?? null };
-}

@@ -1,11 +1,6 @@
 "use client";
 
-import {
-  keepPreviousData,
-  useMutation,
-  useQuery,
-  useQueryClient,
-} from "@tanstack/react-query";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { useAuth } from "@/components/AuthProvider";
 import { useLocale } from "@/components/LocaleProvider";
@@ -15,163 +10,123 @@ import {
   QueryErrorBanner,
 } from "@/components/LoadingStates";
 import {
-  deleteSpotifyConnection,
-  hasSpotifyConnection,
-} from "@/lib/queries";
-import {
+  formatListeningMinutes,
   SPOTIFY_TIME_RANGES,
-  startSpotifyLogin,
   type SpotifyStats,
   type SpotifyTimeRange,
 } from "@/lib/spotify";
 
-const STALE_MS = 30 * 60 * 1000;
+const STALE_MS = 5 * 60 * 1000; // 5 minutes
 
-async function fetchSpotifyStats(
+async function fetchMusicStats(
   accessToken: string,
   timeRange: SpotifyTimeRange
 ): Promise<SpotifyStats> {
   const res = await fetch(`/api/spotify/stats?time_range=${timeRange}`, {
     headers: { Authorization: `Bearer ${accessToken}` },
   });
-  if (res.status === 404) {
-    throw Object.assign(new Error("not-connected"), { code: "not-connected" });
-  }
   if (res.status === 503) {
     throw Object.assign(new Error("not-configured"), { code: "not-configured" });
   }
   if (!res.ok) {
     const body = (await res.json().catch(() => null)) as { error?: string } | null;
-    throw new Error(body?.error ?? "Could not load Spotify.");
+    throw new Error(body?.error ?? "Could not load music stats.");
   }
   return (await res.json()) as SpotifyStats;
 }
 
 export function HubSpotifyCard() {
-  const { t } = useLocale();
+  const { t, locale } = useLocale();
   const { session } = useAuth();
-  const queryClient = useQueryClient();
   const accessToken = session?.access_token;
-  const configured = Boolean(process.env.NEXT_PUBLIC_SPOTIFY_CLIENT_ID);
-  const [timeRange, setTimeRange] = useState<SpotifyTimeRange>("short_term");
-
-  const connectedQuery = useQuery({
-    queryKey: ["spotify-connected"],
-    queryFn: hasSpotifyConnection,
-  });
+  const [timeRange, setTimeRange] = useState<SpotifyTimeRange>("7day");
 
   const statsQuery = useQuery({
-    queryKey: ["spotify-stats", timeRange],
-    queryFn: () => fetchSpotifyStats(accessToken!, timeRange),
-    enabled: Boolean(accessToken && connectedQuery.data === true),
+    queryKey: ["music-stats", timeRange],
+    queryFn: () => fetchMusicStats(accessToken!, timeRange),
+    enabled: Boolean(accessToken),
     staleTime: STALE_MS,
     retry: false,
     placeholderData: keepPreviousData,
   });
 
-  const disconnect = useMutation({
-    mutationFn: deleteSpotifyConnection,
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ["spotify-connected"] });
-      void queryClient.removeQueries({ queryKey: ["spotify-stats"] });
-    },
-  });
-
   const stats = statsQuery.data;
-  const notConnectedError =
+  const notConfigured =
     statsQuery.error != null &&
-    (statsQuery.error as { code?: string }).code === "not-connected";
-  const connected = connectedQuery.data === true && !notConnectedError;
-  const showConnect =
-    configured && !connectedQuery.isLoading && !stats && !connected;
+    (statsQuery.error as { code?: string }).code === "not-configured";
+
   const otherGenres = (stats?.genres ?? []).filter(
-    (genre) => genre !== stats?.topGenre
+    (genre) => genre.toLowerCase() !== stats?.topGenre?.toLowerCase()
   );
 
   return (
     <HubCard
       title={t("card.spotify")}
       footer={
-        connected ? (
-          <button
-            type="button"
-            onClick={() => disconnect.mutate()}
-            disabled={disconnect.isPending}
-            className="w-full text-center text-xs text-zinc-500 hover:text-zinc-300 disabled:opacity-60"
-          >
-            {disconnect.isPending
-              ? t("hub.spotify.disconnecting")
-              : t("hub.spotify.disconnect")}
-          </button>
+        stats?.allTimeScrobbles ? (
+          <p className="w-full text-center text-[11px] text-zinc-500">
+            {stats.allTimeScrobbles.toLocaleString()}{" "}
+            {t("hub.spotify.allTime")}
+          </p>
         ) : null
       }
     >
-      {!configured && (
+      {notConfigured && (
         <p className="text-sm text-zinc-500">{t("hub.spotify.notConfigured")}</p>
       )}
 
-      {configured && connectedQuery.isError && (
+      {statsQuery.isLoading && !stats && !notConfigured && (
+        <div className="flex items-center gap-2 text-sm text-zinc-500">
+          <LoadingSpinner className="h-4 w-4" />
+          {t("common.loading")}
+        </div>
+      )}
+
+      {statsQuery.isError && !notConfigured && (
         <QueryErrorBanner
-          message={t("hub.spotify.migrateHint")}
-          onRetry={() => void connectedQuery.refetch()}
+          message={
+            statsQuery.error instanceof Error
+              ? statsQuery.error.message
+              : t("hub.spotify.error")
+          }
+          onRetry={() => void statsQuery.refetch()}
         />
-      )}
-
-      {configured && connectedQuery.isLoading && (
-        <div className="flex items-center gap-2 text-sm text-zinc-500">
-          <LoadingSpinner className="h-4 w-4" />
-          {t("common.loading")}
-        </div>
-      )}
-
-      {configured && connected && statsQuery.isLoading && !stats && (
-        <div className="flex items-center gap-2 text-sm text-zinc-500">
-          <LoadingSpinner className="h-4 w-4" />
-          {t("common.loading")}
-        </div>
-      )}
-
-      {configured &&
-        statsQuery.isError &&
-        !notConnectedError &&
-        (statsQuery.error as { code?: string }).code !== "not-configured" && (
-          <QueryErrorBanner
-            message={
-              statsQuery.error instanceof Error
-                ? statsQuery.error.message
-                : t("hub.spotify.error")
-            }
-            onRetry={() => void statsQuery.refetch()}
-          />
-        )}
-
-      {showConnect && (
-        <div>
-          <p className="mb-3 text-sm text-zinc-500">
-            {t("hub.spotify.listeningStats")}
-          </p>
-          <button
-            type="button"
-            onClick={() => void startSpotifyLogin()}
-            className="inline-flex w-full items-center justify-center rounded-xl border border-zinc-700 py-2.5 text-sm font-medium text-zinc-200 hover:border-zinc-500"
-          >
-            {t("hub.spotify.connectSpotify")}
-          </button>
-        </div>
       )}
 
       {stats && (
         <div>
-          {stats.topGenre ? (
-            <>
-              <p className="text-3xl font-semibold capitalize tracking-tight text-zinc-100">
-                {stats.topGenre}
-              </p>
-              <p className="text-sm text-zinc-500">top genre</p>
-            </>
-          ) : (
-            <p className="text-sm text-zinc-500">Listening stats</p>
-          )}
+          {/* Header with Top Genre and Listening Time */}
+          <div className="flex items-start justify-between gap-2">
+            <div>
+              {stats.topGenre ? (
+                <>
+                  <p className="text-2xl font-semibold capitalize tracking-tight text-zinc-100">
+                    {stats.topGenre}
+                  </p>
+                  <p className="text-xs text-zinc-500">
+                    {t("hub.spotify.topGenre")}
+                  </p>
+                </>
+              ) : (
+                <p className="text-sm text-zinc-400">
+                  {t("hub.spotify.listeningStats")}
+                </p>
+              )}
+            </div>
+
+            {stats.totalPlays > 0 && (
+              <div className="rounded-lg bg-zinc-800/80 px-2.5 py-1 text-right">
+                <p className="text-xs font-semibold text-zinc-200">
+                  {formatListeningMinutes(stats.totalMinutes, locale)}
+                </p>
+                <p className="text-[10px] text-zinc-400">
+                  {stats.totalPlays} {t("hub.spotify.plays")}
+                </p>
+              </div>
+            )}
+          </div>
+
+          {/* Time Range Selector */}
           <div className="mt-3 flex rounded-lg bg-zinc-800 p-0.5">
             {SPOTIFY_TIME_RANGES.map((range) => {
               const active = range.id === timeRange;
@@ -180,73 +135,136 @@ export function HubSpotifyCard() {
                   key={range.id}
                   type="button"
                   onClick={() => setTimeRange(range.id)}
-                  className={`flex-1 rounded-md py-1.5 text-xs font-medium ${
+                  className={`flex-1 rounded-md py-1.5 text-xs font-medium transition-colors ${
                     active
-                      ? "bg-zinc-700 text-zinc-100"
+                      ? "bg-zinc-700 text-zinc-100 shadow-sm"
                       : "text-zinc-500 hover:text-zinc-300"
                   }`}
                 >
-                  {range.label}
+                  {locale === "fi" ? range.labelFi : range.labelEn}
                 </button>
               );
             })}
           </div>
+
           {statsQuery.isFetching && (
-            <p className="mt-2 text-xs text-zinc-600">Updating…</p>
+            <p className="mt-1.5 text-[10px] text-zinc-600">Updating…</p>
           )}
-          {stats.artists.length > 0 && (
-            <div className="mt-3 flex gap-2 overflow-x-auto pb-1">
-              {stats.artists.map((artist) => (
-                <div
-                  key={artist.id}
-                  className="flex w-14 shrink-0 flex-col items-center gap-1"
-                  title={artist.name}
-                >
-                  {artist.imageUrl ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
-                      src={artist.imageUrl}
-                      alt=""
-                      className="h-14 w-14 rounded-full object-cover"
-                    />
-                  ) : (
-                    <div className="h-14 w-14 rounded-full bg-zinc-800" />
-                  )}
-                  <p className="w-full truncate text-center text-[10px] text-zinc-300">
-                    {artist.name}
-                  </p>
-                </div>
-              ))}
+
+          {/* Top Albums Row */}
+          {stats.albums.length > 0 && (
+            <div className="mt-4">
+              <p className="mb-2 text-[11px] font-medium uppercase tracking-wider text-zinc-500">
+                {t("hub.spotify.topAlbums")}
+              </p>
+              <div className="grid grid-cols-4 gap-2">
+                {stats.albums.map((album) => (
+                  <div
+                    key={album.id}
+                    className="group relative flex flex-col items-center text-center"
+                    title={`${album.name} – ${album.artist} (${album.plays} ${t("hub.spotify.plays")})`}
+                  >
+                    <div className="aspect-square w-full overflow-hidden rounded-lg bg-zinc-800 shadow-inner">
+                      {album.imageUrl ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={album.imageUrl}
+                          alt={album.name}
+                          className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+                          loading="lazy"
+                        />
+                      ) : (
+                        <div className="flex h-full w-full items-center justify-center text-xs text-zinc-600">
+                          ♪
+                        </div>
+                      )}
+                    </div>
+                    <p className="mt-1 w-full truncate text-[11px] font-medium text-zinc-300">
+                      {album.name}
+                    </p>
+                    <p className="w-full truncate text-[10px] text-zinc-500">
+                      {album.plays}x
+                    </p>
+                  </div>
+                ))}
+              </div>
             </div>
           )}
+
+          {/* Top Tracks List */}
           {stats.tracks.length > 0 && (
-            <ol className="mt-4 space-y-1.5">
-              {stats.tracks.map((track, i) => (
-                <li key={track.id} className="flex gap-2 text-sm">
-                  <span className="w-4 shrink-0 text-zinc-600">{i + 1}</span>
-                  <span className="min-w-0 truncate text-zinc-200">
-                    {track.name}
-                    <span className="text-zinc-500"> · {track.artist}</span>
-                  </span>
-                </li>
-              ))}
-            </ol>
+            <div className="mt-4">
+              <p className="mb-2 text-[11px] font-medium uppercase tracking-wider text-zinc-500">
+                {t("hub.spotify.topTracks")}
+              </p>
+              <ol className="space-y-1.5">
+                {stats.tracks.map((track, i) => (
+                  <li
+                    key={track.id}
+                    className="flex items-center justify-between gap-2 rounded-md px-1.5 py-1 text-sm hover:bg-zinc-800/40"
+                  >
+                    <div className="flex min-w-0 items-center gap-2">
+                      <span className="w-3 shrink-0 text-xs text-zinc-500">
+                        {i + 1}
+                      </span>
+                      <span className="truncate text-zinc-200">
+                        {track.name}
+                        <span className="text-zinc-500"> · {track.artist}</span>
+                      </span>
+                    </div>
+                    {track.plays > 0 && (
+                      <span className="shrink-0 rounded bg-zinc-800 px-1.5 py-0.5 text-[10px] text-zinc-400">
+                        {track.plays}x
+                      </span>
+                    )}
+                  </li>
+                ))}
+              </ol>
+            </div>
           )}
+
+          {/* Top Artists Pills */}
+          {stats.artists.length > 0 && (
+            <div className="mt-4">
+              <p className="mb-2 text-[11px] font-medium uppercase tracking-wider text-zinc-500">
+                {t("hub.spotify.topArtists")}
+              </p>
+              <div className="flex flex-wrap gap-1.5">
+                {stats.artists.map((artist, i) => (
+                  <span
+                    key={artist.id}
+                    className="inline-flex items-center gap-1 rounded-full border border-zinc-700/60 bg-zinc-800/60 px-2.5 py-1 text-xs text-zinc-200"
+                  >
+                    <span className="text-zinc-500 text-[10px]">{i + 1}.</span>
+                    <span>{artist.name}</span>
+                    {artist.plays > 0 && (
+                      <span className="text-[10px] text-zinc-400">
+                        ({artist.plays})
+                      </span>
+                    )}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Other Genres */}
           {otherGenres.length > 0 && (
-            <div className="mt-4 flex flex-wrap gap-1.5">
+            <div className="mt-4 flex flex-wrap gap-1.5 border-t border-zinc-800/60 pt-3">
               {otherGenres.map((genre) => (
                 <span
                   key={genre}
-                  className="rounded-full bg-zinc-800 px-2 py-0.5 text-[10px] capitalize text-zinc-300"
+                  className="rounded-full bg-zinc-800/70 px-2 py-0.5 text-[10px] capitalize text-zinc-400"
                 >
                   {genre}
                 </span>
               ))}
             </div>
           )}
+
           {stats.artists.length === 0 && stats.tracks.length === 0 && (
-            <p className="mt-2 text-sm text-zinc-500">
-              Listen for a while and stats will show up here.
+            <p className="mt-3 text-sm text-zinc-500">
+              {t("hub.spotify.empty")}
             </p>
           )}
         </div>
