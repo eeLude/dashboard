@@ -12,17 +12,16 @@ import {
 import { ChartContainer } from "@/components/charts/ChartContainer";
 import { formatFiDate } from "@/lib/dates";
 import {
+  calendarRollingAverage,
   evaluateGoalRate,
   formatSignedKg,
-  formatSignedPct,
+  formatWeightTrend,
   getGoalKgBand,
   getRateStatusClass,
   getRateStatusCopy,
-  getSmoothedWeeklyWeightRate,
-  hasEnoughWeightHistory,
+  getWeightTrend,
   type GoalType,
 } from "@/lib/goals";
-import { getWeeklyWeightChange, rollingAverage } from "@/lib/utils";
 import type { HealthLog } from "@/types/database";
 
 const GRID = "#3f3f46";
@@ -36,24 +35,26 @@ export function BodyWeightChart({
   goalType: GoalType | null;
 }) {
   const chartData = useMemo(() => {
-    const withWeight = logs.filter((l) => l.weight_kg != null);
-    const weights = withWeight.map((l) => Number(l.weight_kg));
-    const avgWeights = rollingAverage(weights, 7);
+    const withWeight = logs
+      .filter((l) => l.weight_kg != null)
+      .map((log) => ({
+        date: log.date,
+        dateLabel: formatFiDate(log.date),
+        weight: Number(log.weight_kg),
+      }));
+    const avgWeights = calendarRollingAverage(withWeight);
 
-    return withWeight.map((log, i) => ({
-      date: log.date,
-      dateLabel: formatFiDate(log.date),
-      weight: Number(log.weight_kg),
+    return withWeight.map((row, i) => ({
+      ...row,
       weightAvg: avgWeights[i],
     }));
   }, [logs]);
 
   const latest = chartData.at(-1)?.weight;
-  const weeklyChange = getWeeklyWeightChange(chartData);
-  const enoughHistory = hasEnoughWeightHistory(chartData);
-  const rate = enoughHistory
-    ? getSmoothedWeeklyWeightRate(chartData)
-    : null;
+  const trend = getWeightTrend(chartData);
+  // The goal bands are calibrated on smoothed rates, so a raw week-over-week
+  // delta is too noisy to judge against them.
+  const rate = trend?.method === "smoothed" ? trend : null;
   const status =
     goalType && rate
       ? evaluateGoalRate(goalType, rate.pctPerWeek)
@@ -75,19 +76,11 @@ export function BodyWeightChart({
         <div className="mb-3 space-y-1">
           <p className="text-sm text-zinc-400">
             <span className="text-zinc-300">Latest {latest} kg</span>
-            {rate != null ? (
-              <span className="ml-2">
-                · {formatSignedKg(rate.kgPerWeek)} ·{" "}
-                {formatSignedPct(rate.pctPerWeek)}/wk
-              </span>
-            ) : weeklyChange != null ? (
-              <span className="ml-2">
-                · Weekly {weeklyChange > 0 ? "+" : ""}
-                {weeklyChange} kg
-              </span>
-            ) : null}
+            {trend != null && (
+              <span className="ml-2">· {formatWeightTrend(trend)}</span>
+            )}
           </p>
-          {!enoughHistory && (
+          {trend?.method !== "smoothed" && (
             <p className="text-xs text-zinc-500">
               Need about 2 weeks of logs to judge rate.
             </p>

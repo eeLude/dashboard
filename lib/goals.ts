@@ -1,5 +1,9 @@
 import { differenceInDays, parseISO, subDays } from "date-fns";
-import { formatLocaleNumber, toDateString } from "@/lib/utils";
+import {
+  formatLocaleNumber,
+  getWeeklyWeightChange,
+  toDateString,
+} from "@/lib/utils";
 import type { UserProfile } from "@/types/database";
 
 export type GoalType = Exclude<UserProfile["goal_type"], null>;
@@ -80,6 +84,53 @@ export function getSmoothedWeeklyWeightRate(
       : 0;
 
   return { kgPerWeek, pctPerWeek, currentWeight };
+}
+
+export type WeightTrend = WeeklyWeightRate & {
+  method: "smoothed" | "raw";
+};
+
+/** Single source for the weekly weight indicator, so the hub card and the gym
+ *  card never show different numbers. Daily weight swings too much to read
+ *  raw, so smooth over calendar weeks as soon as there is enough history. */
+export function getWeightTrend(
+  logs: { date: string; weight: number }[]
+): WeightTrend | null {
+  const smoothed = hasEnoughWeightHistory(logs)
+    ? getSmoothedWeeklyWeightRate(logs)
+    : null;
+  if (smoothed) return { ...smoothed, method: "smoothed" };
+
+  const raw = getWeeklyWeightChange(logs);
+  if (raw == null) return null;
+
+  const currentWeight = logs.at(-1)!.weight;
+  return {
+    kgPerWeek: raw,
+    pctPerWeek:
+      currentWeight > 0 ? Math.round((raw / currentWeight) * 10000) / 100 : 0,
+    currentWeight,
+    method: "raw",
+  };
+}
+
+export function formatWeightTrend(trend: WeightTrend): string {
+  return `${formatSignedKg(trend.kgPerWeek)} · ${formatSignedPct(
+    trend.pctPerWeek
+  )}/wk`;
+}
+
+/** Trend line value per point: the average of the surrounding calendar week.
+ *  An entry-count window would drift to weeks or months wide when logging is
+ *  irregular, which is why the two cards used to disagree. */
+export function calendarRollingAverage(
+  logs: { date: string; weight: number }[],
+  windowDays = 7
+): (number | null)[] {
+  return logs.map((log) => {
+    const avg = calendarWindowAverage(logs, log.date, windowDays);
+    return avg == null ? null : Math.round(avg * 10) / 10;
+  });
 }
 
 export function evaluateGoalRate(

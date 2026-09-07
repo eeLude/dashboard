@@ -68,6 +68,11 @@ create unique index session_exercises_session_slot_idx
   on session_exercises (session_id, template_slot_id)
   where template_slot_id is not null;
 
+-- Extra exercises have no slot to key on, so the movement is their identity.
+create unique index session_exercises_session_movement_idx
+  on session_exercises (session_id, movement_id)
+  where template_slot_id is null;
+
 create index session_exercises_movement_idx on session_exercises (movement_id);
 
 create table workout_logs (

@@ -47,6 +47,12 @@ Hub layout: `HubMasonry` on `app/page.tsx` packs cards into the shortest column.
 
 Splits (Push / Pull / Legs / Upper / Run) → session → exercises → sets. Autosave on the workout page. Run logs store duration in `reps` and km in `weight_kg`. Weight/calories live in `health_logs`.
 
+**One row per movement per session.** Template rows are keyed by `(session_id, template_slot_id)`, extra exercises by `(session_id, movement_id)` — both unique indexes. An extra exercise starts with a local random `cardId` and adopts its DB row id on first save (`lib/useActiveWorkout.ts`), which is what keeps a resumed draft from merging into a second card. `mergeCards` falls back to `sessionExerciseId` → `slotId` → `movement_id` and dedupes, so pre-existing broken drafts heal on load. Clean up old duplicates with `supabase/migrate-dedupe-session-exercises.sql`.
+
+**Estimated 1RM (Epley, reps capped at 12) is the primary strength metric**, not top weight: 70 kg × 12 is progress over 70 kg × 10 even though the weight is flat. It drives the main line in `ProgressiveOverloadChart`, `pickBestSet`, and the direction of `formatProgressChange`. Top weight stays as a faint secondary line. Cardio movements are excluded from e1RM everywhere, since their `reps`/`weight_kg` mean minutes and km.
+
+**Body weight trend is weekly, never daily.** `getWeightTrend` in `lib/goals.ts` is the single source for every weight card: a smoothed 7-calendar-day average vs. ~7 days earlier once there are 13+ days of logs, otherwise the raw week-over-week delta (`method: "raw"`). Goal bands are only judged against the smoothed rate. Render it with `formatWeightTrend` so the hub and gym cards cannot drift apart, and use `calendarRollingAverage` (calendar days, not entry count) for trend lines.
+
 ## Other hub cards
 
 - **Weather:** Open-Meteo; saved location in `localStorage`. Today also shows sunrise, sunset, and day length (`daily=sunrise,sunset`).

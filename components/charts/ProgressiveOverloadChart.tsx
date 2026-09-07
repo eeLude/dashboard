@@ -51,12 +51,11 @@ function ProgressTooltip({
   return (
     <div className="rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm shadow-lg">
       <p className="mb-1 font-medium text-zinc-200">{point.dateLabel}</p>
-      <p className="font-semibold text-brand">
-        {formatSetLine(point.topSet.weight_kg, point.topSet.reps)}
-      </p>
+      <p className="font-semibold text-brand">Est. 1RM {point.estimated1RM} kg</p>
       <p className="mt-1 text-xs text-zinc-500">
-        Est. 1RM: {point.estimated1RM} kg
+        Best set {formatSetLine(point.topSet.weight_kg, point.topSet.reps)}
       </p>
+      <p className="text-xs text-zinc-500">Top weight {point.topWeight} kg</p>
     </div>
   );
 }
@@ -108,15 +107,19 @@ export function ProgressiveOverloadChart({
 
       {latest && (
         <p className="mb-3 text-xs text-zinc-500">
-          Latest top:{" "}
+          Latest est. 1RM:{" "}
           <span className="font-semibold text-brand">
-            {formatSetLine(latest.topSet.weight_kg, latest.topSet.reps)}
+            {latest.estimated1RM} kg
           </span>
           <span className="ml-2 text-zinc-600">
-            · Est. 1RM {latest.estimated1RM} kg
+            · from {formatSetLine(latest.topSet.weight_kg, latest.topSet.reps)}
           </span>
         </p>
       )}
+      <p className="mb-3 text-xs text-zinc-600">
+        Estimated 1RM rises when you add reps at the same weight, so it tracks
+        progress the top weight alone would hide.
+      </p>
 
       {isLoading && (
         <p className="text-sm text-zinc-500">Loading chart...</p>
@@ -140,25 +143,25 @@ export function ProgressiveOverloadChart({
             <Tooltip content={<ProgressTooltip />} />
             <Legend
               formatter={(value) =>
-                value === "estimated1RM" ? "Est. 1RM" : "Top Weight"
+                value === "estimated1RM" ? "Est. 1RM" : "Top weight"
               }
             />
             <Line
               type="monotone"
-              dataKey="topWeight"
+              dataKey="estimated1RM"
               stroke={BRAND}
               strokeWidth={3}
               dot={{ r: 4, fill: BRAND }}
-              name="topWeight"
+              name="estimated1RM"
             />
             <Line
               type="monotone"
-              dataKey="estimated1RM"
+              dataKey="topWeight"
               stroke={MUTED}
               strokeWidth={1.5}
               strokeDasharray="4 4"
               dot={false}
-              name="estimated1RM"
+              name="topWeight"
             />
           </LineChart>
         </ChartContainer>

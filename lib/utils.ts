@@ -56,65 +56,64 @@ export type ProgressChange = {
   direction: "up" | "down" | "neutral";
 };
 
-/** Best set in a session: heaviest weight, then most reps. */
+/** Best set in a session by estimated 1RM, so more reps at the same weight can
+ *  win over a heavier low-rep set. Ties break on the heavier weight. */
 export function pickBestSet(sets: SetPerformance[]): SetPerformance | null {
   if (sets.length === 0) return null;
   return sets.reduce((best, set) => {
-    if (set.weight_kg > best.weight_kg) return set;
-    if (set.weight_kg === best.weight_kg && set.reps > best.reps) return set;
+    const setMax = calculateOneRepMax(set.weight_kg, set.reps);
+    const bestMax = calculateOneRepMax(best.weight_kg, best.reps);
+    if (setMax > bestMax) return set;
+    if (setMax === bestMax && set.weight_kg > best.weight_kg) return set;
     return best;
   });
 }
 
-/** Session-over-session change for dashboard muscle cards. */
+function roundTenth(value: number): number {
+  return Math.round(value * 10) / 10;
+}
+
+function signedLocale(value: number, maxDecimals = 1): string {
+  const abs = formatLocaleNumber(Math.abs(value), maxDecimals);
+  return value < 0 ? `-${abs}` : `+${abs}`;
+}
+
+/** Session-over-session change for dashboard muscle cards. Direction follows
+ *  estimated 1RM, so extra reps at the same weight register as progress. */
 export function formatProgressChange(
   latest: SetPerformance,
   previous: SetPerformance
 ): ProgressChange | null {
-  const weightDelta = Math.round((latest.weight_kg - previous.weight_kg) * 10) / 10;
+  const weightDelta = roundTenth(latest.weight_kg - previous.weight_kg);
+  const repDelta = roundTenth(latest.reps - previous.reps);
+  if (weightDelta === 0 && repDelta === 0) return null;
 
-  if (weightDelta > 0) {
+  const oneRmDelta = roundTenth(
+    calculateOneRepMax(latest.weight_kg, latest.reps) -
+      calculateOneRepMax(previous.weight_kg, previous.reps)
+  );
+  const direction: ProgressChange["direction"] =
+    oneRmDelta > 0 ? "up" : oneRmDelta < 0 ? "down" : "neutral";
+
+  if (weightDelta !== 0) {
     const pct =
       previous.weight_kg > 0
-        ? Math.round((weightDelta / previous.weight_kg) * 1000) / 10
+        ? roundTenth((weightDelta / previous.weight_kg) * 100)
         : 0;
     return {
-      label: `+${weightDelta} kg (+${pct}%)`,
-      direction: "up",
+      label: `${signedLocale(weightDelta)} kg (${signedLocale(pct)}%)`,
+      direction,
     };
   }
 
-  if (weightDelta < 0) {
-    const drop = Math.abs(weightDelta);
-    const pct =
-      previous.weight_kg > 0
-        ? Math.round((drop / previous.weight_kg) * 1000) / 10
-        : 0;
-    return {
-      label: `-${drop} kg (-${pct}%)`,
-      direction: "down",
-    };
-  }
-
-  const repDelta =
-    Math.round((latest.reps - previous.reps) * 10) / 10;
-  if (repDelta > 0) {
-    const label = formatLocaleNumber(repDelta, 1);
-    return {
-      label: `+${label} rep${repDelta === 1 ? "" : "s"}`,
-      direction: "up",
-    };
-  }
-  if (repDelta < 0) {
-    const drop = Math.abs(repDelta);
-    const label = formatLocaleNumber(drop, 1);
-    return {
-      label: `-${label} rep${drop === 1 ? "" : "s"}`,
-      direction: "down",
-    };
-  }
-
-  return null;
+  // Same weight, more reps: without the estimated max this looked like no
+  // progress at all.
+  const absReps = Math.abs(repDelta);
+  const repLabel = `${signedLocale(repDelta)} rep${absReps === 1 ? "" : "s"}`;
+  return {
+    label: `${repLabel} · ${signedLocale(oneRmDelta)} kg e1RM`,
+    direction,
+  };
 }
 
 export function isCardioMuscle(muscle: string): boolean {
@@ -164,16 +163,6 @@ export function formatPreviousSets(
     return formatCardioSetLine(Number(s.weight_kg), s.reps);
   }
   return sets.map((s) => formatSetLine(Number(s.weight_kg), s.reps)).join(", ");
-}
-
-/** Rolling 7-day average for weight trend */
-export function rollingAverage(values: (number | null)[], window = 7): (number | null)[] {
-  return values.map((_, i) => {
-    const slice = values.slice(Math.max(0, i - window + 1), i + 1);
-    const nums = slice.filter((v): v is number => v != null);
-    if (nums.length === 0) return null;
-    return Math.round((nums.reduce((a, b) => a + b, 0) / nums.length) * 10) / 10;
-  });
 }
 
 export function getWeekStart(date: Date): Date {

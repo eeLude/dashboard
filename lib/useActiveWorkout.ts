@@ -76,35 +76,101 @@ function clearDraft(sessionId: string) {
   localStorage.removeItem(draftKey(sessionId));
 }
 
-function mergeCards(
-  dbCards: WorkoutCardDraft[],
-  draftCards: WorkoutCardDraft[]
-): WorkoutCardDraft[] {
-  if (draftCards.length === 0) return dbCards;
-  if (dbCards.length === 0) return draftCards;
+/** A template slot keeps its slot id; a saved extra exercise adopts its DB row
+ *  id. Until the first save an extra exercise only has its local random id. */
+function canonicalizeCard(card: WorkoutCardDraft): WorkoutCardDraft {
+  const cardId = card.slotId ?? card.sessionExerciseId ?? card.cardId;
+  return cardId === card.cardId ? card : { ...card, cardId };
+}
 
-  const dbById = new Map(dbCards.map((c) => [c.cardId, c]));
-  const merged: WorkoutCardDraft[] = [];
-
-  for (const draft of draftCards) {
-    const existing = dbById.get(draft.cardId);
-    if (existing) {
-      merged.push({ ...existing, ...draft, sessionExerciseId: existing.sessionExerciseId ?? draft.sessionExerciseId });
-      dbById.delete(draft.cardId);
-    } else {
-      merged.push(draft);
-    }
+/** Drafts and server rows can disagree on cardId, so fall back to the other
+ *  identities before treating two copies as different exercises. */
+function isSameCard(a: WorkoutCardDraft, b: WorkoutCardDraft): boolean {
+  if (a.cardId === b.cardId) return true;
+  if (a.sessionExerciseId && a.sessionExerciseId === b.sessionExerciseId) {
+    return true;
   }
-
-  for (const remaining of dbById.values()) {
-    merged.push(remaining);
+  if (b.sessionExerciseId && a.cardId === b.sessionExerciseId) return true;
+  if (a.sessionExerciseId && a.sessionExerciseId === b.cardId) return true;
+  if (a.slotId && a.slotId === b.slotId) return true;
+  // A movement is logged at most once per session, so an unslotted card with
+  // the same movement is the same exercise carrying a stale draft id.
+  if (!a.slotId && !b.slotId && a.performedMovementId === b.performedMovementId) {
+    return true;
   }
-
-  return merged;
+  return false;
 }
 
 function cardHasValidSet(card: WorkoutCardDraft) {
   return card.sets.some((s) => s.weight_kg !== "" && s.reps !== "");
+}
+
+/** Fold duplicate copies of one exercise into a single card. */
+function dedupeCards(cards: WorkoutCardDraft[]): WorkoutCardDraft[] {
+  const out: WorkoutCardDraft[] = [];
+
+  for (const card of cards) {
+    const index = out.findIndex((c) => isSameCard(c, card));
+    if (index < 0) {
+      out.push(canonicalizeCard(card));
+      continue;
+    }
+
+    const kept = out[index];
+    const preferIncoming = !cardHasValidSet(kept) && cardHasValidSet(card);
+    const base = preferIncoming ? card : kept;
+    out[index] = canonicalizeCard({
+      ...base,
+      sessionExerciseId: kept.sessionExerciseId ?? card.sessionExerciseId,
+    });
+  }
+
+  return out;
+}
+
+function mergeCards(
+  dbCards: WorkoutCardDraft[],
+  draftCards: WorkoutCardDraft[]
+): WorkoutCardDraft[] {
+  if (draftCards.length === 0) return dedupeCards(dbCards);
+  if (dbCards.length === 0) return dedupeCards(draftCards);
+
+  const remaining = [...dbCards];
+  const merged: WorkoutCardDraft[] = [];
+
+  for (const draft of draftCards) {
+    const index = remaining.findIndex((db) => isSameCard(db, draft));
+    if (index < 0) {
+      merged.push(draft);
+      continue;
+    }
+
+    const [db] = remaining.splice(index, 1);
+    merged.push({
+      ...db,
+      ...draft,
+      sessionExerciseId: db.sessionExerciseId ?? draft.sessionExerciseId,
+    });
+  }
+
+  merged.push(...remaining);
+  return dedupeCards(merged);
+}
+
+/** Once a card adopts its DB id, move any queued save over to the new key. */
+function rekeyPendingSave(
+  from: string,
+  to: string,
+  timers: Map<string, ReturnType<typeof setTimeout>>,
+  pending: Set<string>
+) {
+  if (from === to) return;
+  const timer = timers.get(from);
+  if (timer) {
+    timers.delete(from);
+    timers.set(to, timer);
+  }
+  if (pending.delete(from)) pending.add(to);
 }
 
 type UseActiveWorkoutOptions = {
@@ -163,14 +229,28 @@ export function useActiveWorkout({
       setSaveStatus("saving");
       try {
         const sessionExerciseId = await upsertSessionExercise(sid, card, index + 1);
+        const nextCardId = card.slotId ?? sessionExerciseId ?? cardId;
+
         setCards((prev) => {
           const next = prev.map((c) =>
-            c.cardId === cardId ? { ...c, sessionExerciseId } : c
+            c.cardId === cardId
+              ? { ...c, sessionExerciseId, cardId: nextCardId }
+              : c
           );
           cardsRef.current = next;
           return next;
         });
-        pendingCards.current.delete(cardId);
+        writeDraft(sid, cardsRef.current);
+
+        rekeyPendingSave(
+          cardId,
+          nextCardId,
+          debounceTimers.current,
+          pendingCards.current
+        );
+        if (!debounceTimers.current.has(nextCardId)) {
+          pendingCards.current.delete(nextCardId);
+        }
         updatePendingState();
         setSaveStatus("saved");
       } catch {
@@ -239,8 +319,11 @@ export function useActiveWorkout({
           index + 1
         );
         if (sessionExerciseId) {
+          const nextCardId = current.slotId ?? sessionExerciseId;
           cardsRef.current = cardsRef.current.map((c) =>
-            c.cardId === card.cardId ? { ...c, sessionExerciseId } : c
+            c.cardId === card.cardId
+              ? { ...c, sessionExerciseId, cardId: nextCardId }
+              : c
           );
         }
       } catch (err) {
@@ -290,10 +373,8 @@ export function useActiveWorkout({
         }
 
         const draft = isCompleted ? null : readDraft(sid);
-        let initial = loaded.length > 0 ? loaded : buildInitialCards();
-        if (draft?.cards?.length) {
-          initial = mergeCards(initial, draft.cards);
-        }
+        const base = loaded.length > 0 ? loaded : buildInitialCards();
+        const initial = mergeCards(base, draft?.cards ?? []);
 
         setCards(initial);
         setCardsReady(true);
@@ -388,6 +469,8 @@ export function useActiveWorkout({
 
   const addCard = useCallback((draft: WorkoutCardDraft) => {
     setCards((prev) => {
+      // One row per movement per session, so re-adding is a no-op.
+      if (prev.some((c) => isSameCard(c, draft))) return prev;
       const next = [...prev, draft];
       if (sessionIdRef.current) writeDraft(sessionIdRef.current, next);
       return next;

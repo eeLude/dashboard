@@ -13,7 +13,7 @@ import {
 } from "recharts";
 import { ChartContainer } from "@/components/charts/ChartContainer";
 import { formatFiDate } from "@/lib/dates";
-import { rollingAverage } from "@/lib/utils";
+import { calendarRollingAverage } from "@/lib/goals";
 import type { HealthLog } from "@/types/database";
 
 const GRID = "#3f3f46";
@@ -21,15 +21,16 @@ const TICK = "#a1a1aa";
 
 export function HealthTrendChart({ logs }: { logs: HealthLog[] }) {
   const chartData = useMemo(() => {
-    const weights = logs.map((l) =>
-      l.weight_kg != null ? Number(l.weight_kg) : null
-    );
-    const avgWeights = rollingAverage(weights, 7);
+    const weighed = logs
+      .filter((l) => l.weight_kg != null)
+      .map((l) => ({ date: l.date, weight: Number(l.weight_kg) }));
+    const avgs = calendarRollingAverage(weighed);
+    const avgByDate = new Map(weighed.map((w, i) => [w.date, avgs[i]]));
 
-    return logs.map((log, i) => ({
+    return logs.map((log) => ({
       dateLabel: formatFiDate(log.date),
       weight: log.weight_kg != null ? Number(log.weight_kg) : null,
-      weightAvg: avgWeights[i],
+      weightAvg: avgByDate.get(log.date) ?? null,
       calories: log.calories,
     }));
   }, [logs]);

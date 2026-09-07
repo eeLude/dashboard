@@ -637,6 +637,25 @@ function parseValidSets(draft: WorkoutCardDraft) {
     );
 }
 
+/** An extra exercise has no slot id to key on, and its local cardId only
+ *  becomes the DB id after the first save, so the movement is the identity.
+ *  A session holds at most one unslotted row per movement. */
+async function findCustomSessionExercise(
+  sessionId: string,
+  movementId: string
+): Promise<string | null> {
+  const { data, error } = await supabase
+    .from("session_exercises")
+    .select("id")
+    .eq("session_id", sessionId)
+    .eq("movement_id", movementId)
+    .is("template_slot_id", null)
+    .order("sort_order")
+    .limit(1);
+  if (error) throw error;
+  return data?.[0]?.id ?? null;
+}
+
 export async function upsertSessionExercise(
   sessionId: string,
   draft: WorkoutCardDraft,
@@ -670,16 +689,10 @@ export async function upsertSessionExercise(
     sessionExerciseId = byCardId?.id ?? null;
 
     if (!sessionExerciseId) {
-      const { data: customMatches, error: customError } = await supabase
-        .from("session_exercises")
-        .select("id")
-        .eq("session_id", sessionId)
-        .eq("movement_id", draft.performedMovementId)
-        .is("template_slot_id", null);
-      if (customError) throw customError;
-      if (customMatches?.length === 1) {
-        sessionExerciseId = customMatches[0].id;
-      }
+      sessionExerciseId = await findCustomSessionExercise(
+        sessionId,
+        draft.performedMovementId
+      );
     }
   }
 
@@ -745,18 +758,27 @@ export async function upsertSessionExercise(
         "Could not save extra exercise. Run supabase/migrate-workout-cards.sql in Supabase."
       );
     }
-    if (seError.code === "23505" && draft.slotId) {
-      const { data: raced, error: raceError } = await supabase
-        .from("session_exercises")
-        .select("id")
-        .eq("session_id", sessionId)
-        .eq("template_slot_id", draft.slotId)
-        .maybeSingle();
-      if (raceError) throw raceError;
+    if (seError.code === "23505") {
+      let raced: string | null;
+      if (draft.slotId) {
+        const { data, error: raceError } = await supabase
+          .from("session_exercises")
+          .select("id")
+          .eq("session_id", sessionId)
+          .eq("template_slot_id", draft.slotId)
+          .maybeSingle();
+        if (raceError) throw raceError;
+        raced = data?.id ?? null;
+      } else {
+        raced = await findCustomSessionExercise(
+          sessionId,
+          draft.performedMovementId
+        );
+      }
       if (raced) {
         return upsertSessionExercise(
           sessionId,
-          { ...draft, sessionExerciseId: raced.id },
+          { ...draft, sessionExerciseId: raced },
           sortOrder
         );
       }
@@ -923,6 +945,16 @@ export type MovementProgressPoint = {
 export async function getMovementProgress(
   movementId: string
 ): Promise<MovementProgressPoint[]> {
+  const { data: movement, error: movementError } = await supabase
+    .from("movements")
+    .select("target_muscle")
+    .eq("id", movementId)
+    .maybeSingle();
+  if (movementError) throw movementError;
+  // Run logs store minutes in reps and km in weight_kg, so Epley would
+  // produce nonsense here. Cardio has its own charts.
+  if (movement && isCardioMuscle(movement.target_muscle)) return [];
+
   const { data: sessionExercises, error: seError } = await supabase
     .from("session_exercises")
     .select("id, workout_sessions!inner(date)")
@@ -964,15 +996,15 @@ export async function getMovementProgress(
       topSet: { weight_kg: 0, reps: 0 },
     };
 
-    if (oneRM > existing.best1RM) {
-      byDate.set(date, {
-        topWeight: weight,
-        best1RM: oneRM,
-        topSet: { weight_kg: weight, reps },
-      });
-    } else {
-      byDate.set(date, existing);
-    }
+    byDate.set(date, {
+      // Heaviest weight of the day, tracked separately from the best e1RM set:
+      // a heavy low-rep single can be the top weight without being the best
+      // estimated max, and vice versa.
+      topWeight: Math.max(existing.topWeight, weight),
+      best1RM: Math.max(existing.best1RM, oneRM),
+      topSet:
+        oneRM > existing.best1RM ? { weight_kg: weight, reps } : existing.topSet,
+    });
   }
 
   return Array.from(byDate.entries())
@@ -1112,7 +1144,10 @@ export async function getWorkoutDaysInMonth(
   return getWorkoutDaysInRange(start, end);
 }
 
-export async function getHealthLogs(days = 120): Promise<HealthLog[]> {
+/** Shared by every weight card so they read the same window and cache entry. */
+export const HEALTH_LOG_DAYS = 120;
+
+export async function getHealthLogs(days = HEALTH_LOG_DAYS): Promise<HealthLog[]> {
   const since = new Date();
   since.setDate(since.getDate() - days);
 

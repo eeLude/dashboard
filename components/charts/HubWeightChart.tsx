@@ -4,8 +4,12 @@ import { useMemo } from "react";
 import { Line, LineChart, Tooltip, XAxis, YAxis } from "recharts";
 import { ChartContainer } from "@/components/charts/ChartContainer";
 import { formatFiDate } from "@/lib/dates";
-import { formatSignedKg } from "@/lib/goals";
-import { getWeeklyWeightChange, rollingAverage } from "@/lib/utils";
+import {
+  calendarRollingAverage,
+  formatWeightTrend,
+  getWeightTrend,
+} from "@/lib/goals";
+import { toDateString } from "@/lib/utils";
 import type { HealthLog } from "@/types/database";
 
 const TICK = "#a1a1aa";
@@ -13,18 +17,17 @@ const MAX_DAYS = 90;
 
 export function HubWeightChart({ logs }: { logs: HealthLog[] }) {
   const chartData = useMemo(() => {
-    const withWeight = logs
-      .filter((l) => l.weight_kg != null)
+    const cutoff = toDateString(
+      new Date(Date.now() - (MAX_DAYS - 1) * 86400000)
+    );
+    const recent = logs
+      .filter((l) => l.weight_kg != null && l.date >= cutoff)
       .map((log) => ({
         date: log.date,
         dateLabel: formatFiDate(log.date),
         weight: Number(log.weight_kg),
       }));
-    const recent = withWeight.slice(-MAX_DAYS);
-    const avgs = rollingAverage(
-      recent.map((r) => r.weight),
-      7
-    );
+    const avgs = calendarRollingAverage(recent);
     return recent.map((row, i) => ({
       ...row,
       weightAvg: avgs[i],
@@ -32,7 +35,7 @@ export function HubWeightChart({ logs }: { logs: HealthLog[] }) {
   }, [logs]);
 
   const latest = chartData.at(-1)?.weight;
-  const weeklyChange = getWeeklyWeightChange(chartData);
+  const trend = getWeightTrend(chartData);
 
   if (!chartData.length) {
     return (
@@ -47,11 +50,8 @@ export function HubWeightChart({ logs }: { logs: HealthLog[] }) {
       {latest != null && (
         <p className="mb-2 text-sm text-zinc-300">
           {latest} kg
-          {weeklyChange != null && (
-            <span className="text-zinc-400">
-              {" "}
-              · {formatSignedKg(weeklyChange)}/wk
-            </span>
+          {trend != null && (
+            <span className="text-zinc-400"> · {formatWeightTrend(trend)}</span>
           )}
         </p>
       )}

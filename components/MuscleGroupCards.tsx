@@ -24,7 +24,9 @@ function ProgressRow({ row }: { row: MovementProgressRow }) {
             className={
               row.change.direction === "up"
                 ? "text-sm text-green-500"
-                : "text-sm text-red-400"
+                : row.change.direction === "down"
+                  ? "text-sm text-red-400"
+                  : "text-sm text-zinc-400"
             }
           >
             {row.change.label}

@@ -28,6 +28,7 @@ import {
   getUserProfile,
   getWeeklyMuscleVolume,
   getWeeklyTrainingVolume,
+  HEALTH_LOG_DAYS,
 } from "@/lib/queries";
 
 export default function GymDashboardPage() {
@@ -39,8 +40,8 @@ export default function GymDashboardPage() {
   });
 
   const healthQuery = useQuery({
-    queryKey: ["health-logs"],
-    queryFn: () => getHealthLogs(120),
+    queryKey: ["health-logs", HEALTH_LOG_DAYS],
+    queryFn: () => getHealthLogs(HEALTH_LOG_DAYS),
   });
 
   const volumeQuery = useQuery({

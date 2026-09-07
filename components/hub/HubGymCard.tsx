@@ -12,7 +12,12 @@ import {
 } from "@/components/LoadingStates";
 import { HubWeightChart } from "@/components/charts/HubWeightChart";
 import { HubRunChart } from "@/components/charts/HubRunChart";
-import { getHealthLogs, getRunProgress, getWorkoutDaysInRange } from "@/lib/queries";
+import {
+  getHealthLogs,
+  getRunProgress,
+  getWorkoutDaysInRange,
+  HEALTH_LOG_DAYS,
+} from "@/lib/queries";
 import { toDateString } from "@/lib/utils";
 
 export function HubGymCard() {
@@ -27,8 +32,8 @@ export function HubGymCard() {
   });
 
   const healthQuery = useQuery({
-    queryKey: ["health-logs"],
-    queryFn: () => getHealthLogs(120),
+    queryKey: ["health-logs", HEALTH_LOG_DAYS],
+    queryFn: () => getHealthLogs(HEALTH_LOG_DAYS),
   });
 
   const runQuery = useQuery({
