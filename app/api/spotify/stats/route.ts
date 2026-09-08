@@ -51,8 +51,11 @@ type LastFmAlbumItem = {
 };
 
 export async function GET(request: NextRequest) {
-  const apiKey = process.env.LASTFM_API_KEY;
-  const username = process.env.LASTFM_USERNAME;
+  const rawApiKey = process.env.LASTFM_API_KEY;
+  const rawUsername = process.env.LASTFM_USERNAME;
+
+  const apiKey = rawApiKey?.replace(/^["']|["']$/g, "").trim();
+  const username = rawUsername?.replace(/^["']|["']$/g, "").trim();
 
   if (!apiKey || !username) {
     return NextResponse.json(
@@ -80,6 +83,11 @@ export async function GET(request: NextRequest) {
     request.nextUrl.searchParams.get("time_range")
   );
 
+  const fetchHeaders = {
+    "User-Agent": "LiftmaxxingDashboard/1.0 (https://github.com/eeLude/dashboard)",
+    Accept: "application/json",
+  };
+
   const artistUrl = `${LASTFM_BASE}?method=user.gettopartists&user=${encodeURIComponent(
     username
   )}&api_key=${apiKey}&period=${timeRange}&limit=10&format=json`;
@@ -97,15 +105,32 @@ export async function GET(request: NextRequest) {
   )}&api_key=${apiKey}&format=json`;
 
   const [artistsRes, tracksRes, albumsRes, infoRes] = await Promise.all([
-    fetch(artistUrl, { next: { revalidate: 300 } }),
-    fetch(trackUrl, { next: { revalidate: 300 } }),
-    fetch(albumUrl, { next: { revalidate: 300 } }),
-    fetch(infoUrl, { next: { revalidate: 300 } }),
+    fetch(artistUrl, { headers: fetchHeaders, cache: "no-store" }),
+    fetch(trackUrl, { headers: fetchHeaders, cache: "no-store" }),
+    fetch(albumUrl, { headers: fetchHeaders, cache: "no-store" }),
+    fetch(infoUrl, { headers: fetchHeaders, cache: "no-store" }),
   ]);
 
   if (!artistsRes.ok || !tracksRes.ok) {
+    const artistsErr = !artistsRes.ok
+      ? ((await artistsRes.json().catch(() => null)) as { message?: string } | null)
+      : null;
+    const tracksErr = !tracksRes.ok
+      ? ((await tracksRes.json().catch(() => null)) as { message?: string } | null)
+      : null;
+    const msg =
+      artistsErr?.message ||
+      tracksErr?.message ||
+      `HTTP status artists=${artistsRes.status}, tracks=${tracksRes.status}`;
+    console.error("Last.fm request failed:", {
+      username,
+      artistsStatus: artistsRes.status,
+      tracksStatus: tracksRes.status,
+      artistsErr,
+      tracksErr,
+    });
     return NextResponse.json(
-      { error: "Could not load music stats from Last.fm." },
+      { error: `Last.fm: ${msg}` },
       { status: 502 }
     );
   }

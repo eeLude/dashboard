@@ -14,6 +14,7 @@ import {
   persistCardOrder,
   upsertSessionExercise,
 } from "@/lib/queries";
+import { formatLocaleNumber, parseLocaleNumber, parseRunNote } from "@/lib/utils";
 import type { WorkoutCardDraft } from "@/types/database";
 
 const DEBOUNCE_MS = 1500;
@@ -652,10 +653,11 @@ export function useRunAutosave({
   saveStatusRef.current = saveStatus;
 
   const buildRunDraft = useCallback((): WorkoutCardDraft | null => {
-    const durationMin = parseInt(duration, 10);
-    if (!durationMin || durationMin <= 0 || !movementId) return null;
+    const durationMin = duration.trim() ? parseLocaleNumber(duration) : null;
+    if (durationMin == null || durationMin <= 0 || !movementId) return null;
 
-    const distanceKm = distance.trim() ? parseFloat(distance) : 0;
+    const parsedDist = distance.trim() ? parseLocaleNumber(distance) : null;
+    const distanceKm = parsedDist != null && parsedDist > 0 ? parsedDist : 0;
     return {
       cardId: slotId ?? "run",
       slotId,
@@ -718,6 +720,8 @@ export function useRunAutosave({
   const [resumeData, setResumeData] = useState<{
     duration: string;
     distance: string;
+    speed: string;
+    elevation: string;
     note: string;
     movementId: string;
   } | null>(null);
@@ -743,13 +747,21 @@ export function useRunAutosave({
             setSessionExerciseId(runCard.sessionExerciseId);
           }
           if (runCard?.sets[0]) {
+            const parsed = parseRunNote(runCard.note);
+            const dist = parseLocaleNumber(runCard.sets[0].weight_kg);
+            const dur = parseLocaleNumber(runCard.sets[0].reps);
             setResumeData({
-              duration: runCard.sets[0].reps,
+              duration:
+                dur != null && dur > 0
+                  ? formatLocaleNumber(dur, 1)
+                  : runCard.sets[0].reps,
               distance:
-                parseFloat(runCard.sets[0].weight_kg) > 0
-                  ? runCard.sets[0].weight_kg
+                dist != null && dist > 0
+                  ? formatLocaleNumber(dist, 2)
                   : "",
-              note: runCard.note ?? "",
+              speed: parsed.speed,
+              elevation: parsed.elevation,
+              note: parsed.userNote,
               movementId: runCard.performedMovementId,
             });
           }
@@ -817,8 +829,8 @@ export function useRunAutosave({
     await deleteWorkoutSession(sid);
   }, [flushSave]);
 
-  const canFinish =
-    duration.trim() !== "" && parseInt(duration, 10) > 0;
+  const parsedDuration = parseLocaleNumber(duration);
+  const canFinish = parsedDuration != null && parsedDuration > 0;
 
   return {
     sessionId,

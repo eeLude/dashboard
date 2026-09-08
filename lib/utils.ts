@@ -95,7 +95,15 @@ export function formatProgressChange(
   const direction: ProgressChange["direction"] =
     oneRmDelta > 0 ? "up" : oneRmDelta < 0 ? "down" : "neutral";
 
+  const absReps = Math.abs(repDelta);
+
   if (weightDelta !== 0) {
+    if (repDelta !== 0) {
+      return {
+        label: `${signedLocale(weightDelta)} kg (${signedLocale(repDelta)} rep${absReps === 1 ? "" : "s"})`,
+        direction,
+      };
+    }
     const pct =
       previous.weight_kg > 0
         ? roundTenth((weightDelta / previous.weight_kg) * 100)
@@ -106,12 +114,9 @@ export function formatProgressChange(
     };
   }
 
-  // Same weight, more reps: without the estimated max this looked like no
-  // progress at all.
-  const absReps = Math.abs(repDelta);
-  const repLabel = `${signedLocale(repDelta)} rep${absReps === 1 ? "" : "s"}`;
+  // Same weight, more/fewer reps: clean and simple without "e1RM" clutter
   return {
-    label: `${repLabel} · ${signedLocale(oneRmDelta)} kg e1RM`,
+    label: `${signedLocale(repDelta)} rep${absReps === 1 ? "" : "s"}`,
     direction,
   };
 }
@@ -122,11 +127,53 @@ export function isCardioMuscle(muscle: string): boolean {
 
 /** Run logs store duration in reps and distance (km) in weight_kg. */
 export function formatCardioSetLine(distanceKm: number, durationMin: number): string {
-  const parts = [`${durationMin} min`];
+  const parts = [`${formatLocaleNumber(durationMin, 1)} min`];
   if (distanceKm > 0) {
     parts.push(`${formatLocaleNumber(distanceKm, 2)} km`);
   }
   return parts.join(" · ");
+}
+
+/** Sanitize numeric input allowing both comma and dot, max one decimal separator. */
+export function sanitizeDecimalInput(val: string): string {
+  const allowed = val.replace(/[^0-9.,]/g, "");
+  const firstSep = allowed.search(/[.,]/);
+  if (firstSep === -1) return allowed;
+  const before = allowed.slice(0, firstSep + 1);
+  const after = allowed.slice(firstSep + 1).replace(/[.,]/g, "");
+  return before + after;
+}
+
+/** Parse speed, elevation, and custom user note from auto-generated run notes. */
+export function parseRunNote(rawNote: string | null | undefined): {
+  speed: string;
+  elevation: string;
+  userNote: string;
+} {
+  if (!rawNote) return { speed: "", elevation: "", userNote: "" };
+
+  const match = rawNote.match(/^(?:Treadmill|Run)\s*—\s*(.*?)(?:\.\s*([\s\S]*))?$/);
+  if (!match) {
+    return { speed: "", elevation: "", userNote: rawNote };
+  }
+
+  const metricsPart = match[1] ?? "";
+  const remainingNote = (match[2] ?? "").trim();
+
+  let speed = "";
+  let elevation = "";
+
+  const speedMatch = metricsPart.match(/([0-9]+(?:[.,][0-9]+)?)\s*kph/i);
+  if (speedMatch) speed = speedMatch[1];
+
+  const elevMatch = metricsPart.match(/([0-9]+(?:[.,][0-9]+)?)\s*%\s*elevation/i);
+  if (elevMatch) elevation = elevMatch[1];
+
+  if (!speed && !elevation) {
+    return { speed: "", elevation: "", userNote: rawNote };
+  }
+
+  return { speed, elevation, userNote: remainingNote };
 }
 
 /** Pace as m:ss per km, e.g. 5.5 → "5:30". */

@@ -6,6 +6,28 @@ import { Plus, X } from "lucide-react";
 import { getOrCreateMovement } from "@/lib/queries";
 import type { Movement } from "@/types/database";
 
+function guessMuscleGroup(name: string, availableGroups: string[]): string | null {
+  const lower = name.toLowerCase();
+  const rules: [RegExp, string][] = [
+    [/tricep|skull\s*crush|katana|pushdown|\bdip\b/i, "Triceps"],
+    [/bicep|curl|preacher/i, "Biceps"],
+    [/rear\s*delt|face\s*pull/i, "Rear Delts"],
+    [/lateral|shoulder|arnold|overhead\s*press|military/i, "Shoulders"],
+    [/bench|chest|fly|pec|push-?up/i, "Chest"],
+    [/lat\b|pulldown|pull-?up|chin-?up|row|back\s*ext|t-bar/i, "Back"],
+    [/squat|lunge|leg\s*ext|leg\s*press|hack/i, "Quads"],
+    [/hamstring|rdl|deadlift|hip\s*thrust/i, "Hamstrings"],
+    [/calf|calves/i, "Calves"],
+    [/ab\b|crunch|core|leg\s*raise|plank/i, "Core"],
+  ];
+  for (const [regex, muscle] of rules) {
+    if (regex.test(lower) && availableGroups.includes(muscle)) {
+      return muscle;
+    }
+  }
+  return null;
+}
+
 export function MovementPicker({
   movements,
   muscleGroups,
@@ -23,10 +45,13 @@ export function MovementPicker({
   const [createError, setCreateError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (muscleGroups.length > 0 && !muscleGroups.includes(targetMuscle)) {
+    const guessed = guessMuscleGroup(search, muscleGroups);
+    if (guessed) {
+      setTargetMuscle(guessed);
+    } else if (muscleGroups.length > 0 && !muscleGroups.includes(targetMuscle)) {
       setTargetMuscle(muscleGroups[0]);
     }
-  }, [muscleGroups, targetMuscle]);
+  }, [search, muscleGroups, targetMuscle]);
 
   const trimmedSearch = search.trim();
   const hasExactMatch = useMemo(

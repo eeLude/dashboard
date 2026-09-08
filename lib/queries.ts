@@ -141,6 +141,7 @@ export type MovementProgressRow = {
   group: DashboardMuscleGroup;
   latestDate: string;
   latestSet: { weight_kg: number; reps: number };
+  previousSet?: { weight_kg: number; reps: number } | null;
   change: { label: string; direction: "up" | "down" | "neutral" } | null;
 };
 
@@ -272,6 +273,7 @@ export async function getMuscleGroupProgress(): Promise<MuscleGroupProgress> {
       group,
       latestDate,
       latestSet,
+      previousSet: previous,
       change,
     });
   }

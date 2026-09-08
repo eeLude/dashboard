@@ -64,18 +64,18 @@ type ReverseResponse = {
 };
 
 function weatherFromCode(code: number): { kind: WeatherKind; label: string } {
-  if (code === 0) return { kind: "clear", label: "Clear" };
-  if (code === 1) return { kind: "partly", label: "Mainly clear" };
-  if (code === 2) return { kind: "partly", label: "Partly cloudy" };
-  if (code === 3) return { kind: "overcast", label: "Overcast" };
-  if (code === 45 || code === 48) return { kind: "fog", label: "Fog" };
-  if (code >= 51 && code <= 57) return { kind: "drizzle", label: "Drizzle" };
-  if (code >= 61 && code <= 67) return { kind: "rain", label: "Rain" };
-  if (code >= 71 && code <= 77) return { kind: "snow", label: "Snow" };
-  if (code >= 80 && code <= 82) return { kind: "rain", label: "Showers" };
-  if (code === 85 || code === 86) return { kind: "snow", label: "Snow showers" };
-  if (code >= 95) return { kind: "thunder", label: "Thunderstorm" };
-  return { kind: "overcast", label: "Cloudy" };
+  if (code === 0) return { kind: "clear", label: "Selkeää" };
+  if (code === 1) return { kind: "partly", label: "Melko selkeää" };
+  if (code === 2) return { kind: "partly", label: "Puolipilvistä" };
+  if (code === 3) return { kind: "overcast", label: "Pilvistä" };
+  if (code === 45 || code === 48) return { kind: "fog", label: "Sumua" };
+  if (code >= 51 && code <= 57) return { kind: "drizzle", label: "Tihkusadetta" };
+  if (code >= 61 && code <= 67) return { kind: "rain", label: "Vesisadetta" };
+  if (code >= 71 && code <= 77) return { kind: "snow", label: "Lumisadetta" };
+  if (code >= 80 && code <= 82) return { kind: "rain", label: "Sadekuuroja" };
+  if (code === 85 || code === 86) return { kind: "snow", label: "Lumikuuroja" };
+  if (code >= 95) return { kind: "thunder", label: "Ukkosta" };
+  return { kind: "overcast", label: "Pilvistä" };
 }
 
 export function loadSavedWeatherLocation(): WeatherLocation | null {
@@ -95,7 +95,10 @@ export function loadSavedWeatherLocation(): WeatherLocation | null {
     return {
       lat: parsed.lat,
       lon: parsed.lon,
-      name: typeof parsed.name === "string" && parsed.name ? parsed.name : "Local",
+      name:
+        typeof parsed.name === "string" && parsed.name && parsed.name !== "Local"
+          ? parsed.name
+          : "Paikallinen",
     };
   } catch {
     return null;
@@ -120,7 +123,7 @@ export async function lookupPlaceName(
     url.searchParams.set("latitude", String(lat));
     url.searchParams.set("longitude", String(lon));
     url.searchParams.set("count", "1");
-    url.searchParams.set("language", "en");
+    url.searchParams.set("language", "fi");
     const res = await fetch(url.toString());
     if (res.ok) {
       const data = (await res.json()) as ReverseResponse;
@@ -130,7 +133,7 @@ export async function lookupPlaceName(
   } catch {
     // Open-Meteo reverse is not a public product; ignore.
   }
-  return "Local";
+  return "Paikallinen";
 }
 
 export async function getWeatherSnapshot(

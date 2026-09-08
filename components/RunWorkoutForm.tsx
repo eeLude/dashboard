@@ -14,7 +14,14 @@ import {
 } from "@/lib/queries";
 import { useRunAutosave } from "@/lib/useActiveWorkout";
 import { formatFiDate } from "@/lib/dates";
-import { formatCardioSetLine, formatPreviousSets } from "@/lib/utils";
+import {
+  formatCardioSetLine,
+  formatLocaleNumber,
+  formatPreviousSets,
+  parseLocaleNumber,
+  parseRunNote,
+  sanitizeDecimalInput,
+} from "@/lib/utils";
 
 const RUN_MOVEMENTS = ["Treadmill Run", "Outdoor Run"];
 
@@ -107,6 +114,8 @@ export function RunWorkoutForm({
     if (!autosave.resumeData || resumeApplied) return;
     setDuration(autosave.resumeData.duration);
     setDistance(autosave.resumeData.distance);
+    setSpeed(autosave.resumeData.speed);
+    setElevation(autosave.resumeData.elevation);
     setNote(autosave.resumeData.note);
     setMovementId(autosave.resumeData.movementId);
     setResumeApplied(true);
@@ -121,9 +130,12 @@ export function RunWorkoutForm({
   const copyLastSession = () => {
     if (!previous?.sets.length) return;
     const last = previous.sets[0];
-    setDuration(String(last.reps));
-    setDistance(last.weight_kg > 0 ? String(last.weight_kg) : "");
-    setNote(previous.note ?? "");
+    setDuration(last.reps ? formatLocaleNumber(last.reps, 1) : "");
+    setDistance(last.weight_kg > 0 ? formatLocaleNumber(last.weight_kg, 2) : "");
+    const parsed = parseRunNote(previous.note);
+    setSpeed(parsed.speed);
+    setElevation(parsed.elevation);
+    setNote(parsed.userNote);
   };
 
   const finishMutation = useMutation({
@@ -221,11 +233,11 @@ export function RunWorkoutForm({
               Duration (min)
             </label>
             <input
-              type="number"
-              inputMode="numeric"
+              type="text"
+              inputMode="decimal"
               placeholder="30"
               value={duration}
-              onChange={(e) => setDuration(e.target.value)}
+              onChange={(e) => setDuration(sanitizeDecimalInput(e.target.value))}
               className="w-full rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2.5 text-center text-base"
             />
           </div>
@@ -234,11 +246,11 @@ export function RunWorkoutForm({
               Distance (km)
             </label>
             <input
-              type="number"
+              type="text"
               inputMode="decimal"
-              placeholder="3.5"
+              placeholder="3,5"
               value={distance}
-              onChange={(e) => setDistance(e.target.value)}
+              onChange={(e) => setDistance(sanitizeDecimalInput(e.target.value))}
               className="w-full rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2.5 text-center text-base"
             />
           </div>
@@ -247,11 +259,11 @@ export function RunWorkoutForm({
               Speed (kph)
             </label>
             <input
-              type="number"
+              type="text"
               inputMode="decimal"
-              placeholder="5.3"
+              placeholder="5,3"
               value={speed}
-              onChange={(e) => setSpeed(e.target.value)}
+              onChange={(e) => setSpeed(sanitizeDecimalInput(e.target.value))}
               className="w-full rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2.5 text-center text-base"
             />
           </div>
@@ -260,11 +272,11 @@ export function RunWorkoutForm({
               Elevation (%)
             </label>
             <input
-              type="number"
+              type="text"
               inputMode="decimal"
-              placeholder="3.8"
+              placeholder="3,8"
               value={elevation}
-              onChange={(e) => setElevation(e.target.value)}
+              onChange={(e) => setElevation(sanitizeDecimalInput(e.target.value))}
               className="w-full rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2.5 text-center text-base"
             />
           </div>
@@ -281,7 +293,10 @@ export function RunWorkoutForm({
         {duration && distance && (
           <p className="mt-3 text-sm text-zinc-500">
             Summary:{" "}
-            {formatCardioSetLine(parseFloat(distance) || 0, parseInt(duration, 10))}
+            {formatCardioSetLine(
+              parseLocaleNumber(distance) || 0,
+              parseLocaleNumber(duration) || 0
+            )}
           </p>
         )}
       </div>

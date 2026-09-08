@@ -124,7 +124,7 @@ export function HubWeatherCard() {
       title={t("card.weather")}
       footer={
         <p className="text-center text-[10px] text-zinc-600">
-          Weather data by{" "}
+          {t("hub.weather.attribution")}{" "}
           <a
             href="https://open-meteo.com/"
             target="_blank"
@@ -196,7 +196,7 @@ export function HubWeatherCard() {
               </p>
               {weather.feelsLike !== weather.currentTemp && (
                 <p className="text-xs text-zinc-500">
-                  Feels like {weather.feelsLike}°
+                  {t("hub.weather.feelsLike", { temp: weather.feelsLike })}
                 </p>
               )}
               {weather.sunrise && weather.dayLengthMs != null && (
@@ -215,7 +215,7 @@ export function HubWeatherCard() {
             onClick={clearLocation}
             className="mt-1 self-start text-xs text-zinc-500 hover:text-zinc-300"
           >
-            Change location
+            {t("hub.weather.changeLocation")}
           </button>
           <div className="mt-4 grid grid-cols-7 gap-1 text-center">
             {weather.days.map((day) => {
