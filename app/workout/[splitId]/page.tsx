@@ -229,6 +229,8 @@ function ActiveWorkoutContent({
                 canMoveDown={workout.canMoveDown(draft.cardId)}
                 onMoveUp={() => void workout.moveCard(draft.cardId, "up")}
                 onMoveDown={() => void workout.moveCard(draft.cardId, "down")}
+                sessionId={workout.sessionId}
+                workoutDate={workoutDate}
               />
             ))}
 

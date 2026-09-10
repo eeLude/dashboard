@@ -122,8 +122,17 @@ export function RunWorkoutForm({
   }, [autosave.resumeData, resumeApplied]);
 
   const { data: previous, isLoading: previousLoading } = useQuery({
-    queryKey: ["previous-performance", selectedMovementId],
-    queryFn: () => getPreviousMovementPerformance(selectedMovementId),
+    queryKey: [
+      "previous-performance",
+      selectedMovementId,
+      autosave.sessionId,
+      workoutDate,
+    ],
+    queryFn: () =>
+      getPreviousMovementPerformance(selectedMovementId, {
+        excludeSessionId: autosave.sessionId,
+        beforeDate: workoutDate,
+      }),
     enabled: !!selectedMovementId,
   });
 

@@ -51,6 +51,8 @@ export function ExerciseCard({
   canMoveDown = false,
   onMoveUp,
   onMoveDown,
+  sessionId,
+  workoutDate,
 }: {
   draft: WorkoutCardDraft;
   onChange: (draft: WorkoutCardDraft) => void;
@@ -59,12 +61,18 @@ export function ExerciseCard({
   canMoveDown?: boolean;
   onMoveUp?: () => void;
   onMoveDown?: () => void;
+  sessionId?: string | null;
+  workoutDate?: string;
 }) {
   const lookupId = draft.performedMovementId;
 
   const { data: previous, isLoading } = useQuery({
-    queryKey: ["previous-performance", lookupId],
-    queryFn: () => getPreviousMovementPerformance(lookupId),
+    queryKey: ["previous-performance", lookupId, sessionId, workoutDate],
+    queryFn: () =>
+      getPreviousMovementPerformance(lookupId, {
+        excludeSessionId: sessionId,
+        beforeDate: workoutDate,
+      }),
     enabled: !!lookupId,
   });
 

@@ -372,12 +372,28 @@ export async function getWeeklyTrainingVolume(
 }
 
 export async function getPreviousMovementPerformance(
-  movementId: string
+  movementId: string,
+  options?: {
+    excludeSessionId?: string | null;
+    beforeDate?: string | null;
+  }
 ): Promise<PreviousExerciseData | null> {
-  const { data: sessionExercises, error: seError } = await supabase
+  let query = supabase
     .from("session_exercises")
-    .select("id, note, workout_sessions!inner(date)")
+    .select("id, note, created_at, session_id, workout_sessions!inner(id, date, completed_at)")
     .eq("movement_id", movementId)
+    .not("workout_sessions.completed_at", "is", null);
+
+  if (options?.excludeSessionId) {
+    query = query.neq("session_id", options.excludeSessionId);
+  }
+
+  if (options?.beforeDate) {
+    query = query.lte("workout_sessions.date", options.beforeDate);
+  }
+
+  const { data: sessionExercises, error: seError } = await query
+    .order("date", { foreignTable: "workout_sessions", ascending: false })
     .order("created_at", { ascending: false })
     .limit(1);
 
@@ -386,7 +402,7 @@ export async function getPreviousMovementPerformance(
 
   const last = sessionExercises[0];
   const sessionDate =
-    (last.workout_sessions as { date: string }).date ?? "";
+    (last.workout_sessions as unknown as { date: string }).date ?? "";
 
   const { data: logs, error: logError } = await supabase
     .from("workout_logs")
