@@ -36,6 +36,7 @@ Hub layout: `HubMasonry` on `app/page.tsx` packs cards into the shortest column.
 - Mobile-first; verify UI in the browser (hub + any other route that shares the state).
 - UI mix: English copy, Finnish dates (`formatFiDate`), comma decimals (`formatLocaleNumber`). Browser/PWA title **Dashboard**; gym page `h1` is **Liftmaxing**.
 - Do not commit unless asked. Do not force-push. Do not put secrets, PDFs, or real quantities in git.
+- **Safety boundary:** Never delete, modify, or run destructive commands on files or directories outside this project folder (`liftmaxxing`). All actions must remain strictly inside the workspace.
 
 ### Never commit
 

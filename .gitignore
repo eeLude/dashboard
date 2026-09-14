@@ -1,4 +1,4 @@
-﻿# dependencies
+# dependencies
 /node_modules
 /.pnp
 .pnp.js
@@ -43,3 +43,8 @@ supabase/seed-portfolio.sql
 /backups/
 *.pdf
 debug-*.log
+
+# agent rules
+AGENTS.md
+GEMINI.md
+
