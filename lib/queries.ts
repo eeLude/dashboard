@@ -158,6 +158,20 @@ function isBetterSet(
 }
 
 async function getActiveLoggedMovementIds(): Promise<Set<string>> {
+  const ids = new Set<string>();
+
+  // 1. All movements configured in split templates are active routine movements
+  const { data: templateSlots, error: tplError } = await supabase
+    .from("split_exercises")
+    .select("movement_id");
+
+  if (!tplError && templateSlots) {
+    for (const slot of templateSlots) {
+      if (slot.movement_id) ids.add(slot.movement_id);
+    }
+  }
+
+  // 2. All movements logged in the latest session of each split
   const { data: sessions, error } = await supabase
     .from("workout_sessions")
     .select("id, split_id, date, created_at")
@@ -166,7 +180,7 @@ async function getActiveLoggedMovementIds(): Promise<Set<string>> {
     .order("created_at", { ascending: false });
 
   if (error) throw error;
-  if (!sessions?.length) return new Set();
+  if (!sessions?.length) return ids;
 
   const latestSessionBySplit = new Map<string, string>();
   for (const session of sessions) {
@@ -176,19 +190,17 @@ async function getActiveLoggedMovementIds(): Promise<Set<string>> {
   }
 
   const sessionIds = [...latestSessionBySplit.values()];
-  if (sessionIds.length === 0) return new Set();
+  if (sessionIds.length === 0) return ids;
 
   const { data: exercises, error: exError } = await supabase
     .from("session_exercises")
-    .select("movement_id, workout_logs(id)")
+    .select("movement_id, workout_logs!inner(id)")
     .in("session_id", sessionIds);
 
   if (exError) throw exError;
 
-  const ids = new Set<string>();
   for (const row of exercises ?? []) {
-    const logs = row.workout_logs as { id: string }[] | null;
-    if (logs && logs.length > 0) {
+    if (row.movement_id) {
       ids.add(row.movement_id);
     }
   }
@@ -380,7 +392,9 @@ export async function getPreviousMovementPerformance(
 ): Promise<PreviousExerciseData | null> {
   let query = supabase
     .from("session_exercises")
-    .select("id, note, created_at, session_id, workout_sessions!inner(id, date, completed_at)")
+    .select(
+      "id, note, created_at, session_id, workout_sessions!inner(id, date, completed_at), workout_logs!inner(set_number, weight_kg, reps)"
+    )
     .eq("movement_id", movementId)
     .not("workout_sessions.completed_at", "is", null);
 
@@ -392,29 +406,40 @@ export async function getPreviousMovementPerformance(
     query = query.lte("workout_sessions.date", options.beforeDate);
   }
 
-  const { data: sessionExercises, error: seError } = await query
-    .order("date", { foreignTable: "workout_sessions", ascending: false })
-    .order("created_at", { ascending: false })
-    .limit(1);
+  const { data, error } = await query;
+  if (error) throw error;
+  if (!data || data.length === 0) return null;
 
-  if (seError) throw seError;
-  if (!sessionExercises?.length) return null;
+  // Ensure rows have actual workout logs
+  const valid = data.filter(
+    (row) => Array.isArray(row.workout_logs) && row.workout_logs.length > 0
+  );
+  if (valid.length === 0) return null;
 
-  const last = sessionExercises[0];
+  // PostgREST foreignTable ordering does not order the parent table.
+  // Order in JavaScript by session date descending, then created_at descending.
+  valid.sort((a, b) => {
+    const wsA = a.workout_sessions as unknown as { date: string };
+    const wsB = b.workout_sessions as unknown as { date: string };
+    const dateCmp = wsB.date.localeCompare(wsA.date);
+    if (dateCmp !== 0) return dateCmp;
+    return b.created_at.localeCompare(a.created_at);
+  });
+
+  const last = valid[0];
   const sessionDate =
     (last.workout_sessions as unknown as { date: string }).date ?? "";
+  const rawLogs =
+    (last.workout_logs as unknown as {
+      set_number: number;
+      weight_kg: number;
+      reps: number;
+    }[]) ?? [];
 
-  const { data: logs, error: logError } = await supabase
-    .from("workout_logs")
-    .select("set_number, weight_kg, reps")
-    .eq("session_exercise_id", last.id)
-    .order("set_number");
-
-  if (logError) throw logError;
-  if (!logs?.length) return null;
+  const sortedLogs = [...rawLogs].sort((a, b) => a.set_number - b.set_number);
 
   return {
-    sets: logs.map((l) => ({
+    sets: sortedLogs.map((l) => ({
       set_number: l.set_number,
       weight_kg: Number(l.weight_kg),
       reps: l.reps,
@@ -843,6 +868,27 @@ export async function completeWorkoutSession(sessionId: string) {
     .maybeSingle();
   if (readError) throw readError;
   if (existing?.completed_at) return;
+
+  // Clean up any unperformed exercises in this session (no logs and no note)
+  const { data: exercises, error: exError } = await supabase
+    .from("session_exercises")
+    .select("id, note, workout_logs(id)")
+    .eq("session_id", sessionId);
+
+  if (!exError && exercises) {
+    const toDelete = exercises
+      .filter(
+        (e) =>
+          !e.note?.trim() &&
+          (!e.workout_logs ||
+            (e.workout_logs as unknown as { id: string }[]).length === 0)
+      )
+      .map((e) => e.id);
+
+    if (toDelete.length > 0) {
+      await supabase.from("session_exercises").delete().in("id", toDelete);
+    }
+  }
 
   const { error } = await supabase
     .from("workout_sessions")
