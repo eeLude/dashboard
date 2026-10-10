@@ -1,0 +1,13 @@
+node_modules
+.next
+.git
+.cursor
+.vercel
+backups
+*.pdf
+*.md
+.env*.local
+.gitignore
+debug-*.log
+supabase/seed-history.sql
+supabase/seed-portfolio.sql

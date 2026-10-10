@@ -1,0 +1,19 @@
+services:
+  dashboard:
+    container_name: dashboard-app
+    build:
+      context: .
+      args:
+        # NEXT_PUBLIC_* vars must be available at BUILD time (they get inlined into JS bundles)
+        NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL}
+        NEXT_PUBLIC_SUPABASE_ANON_KEY: ${NEXT_PUBLIC_SUPABASE_ANON_KEY}
+        NEXT_PUBLIC_SPOTIFY_CLIENT_ID: ${NEXT_PUBLIC_SPOTIFY_CLIENT_ID:-}
+        NEXT_PUBLIC_SPOTIFY_REDIRECT_URI: ${NEXT_PUBLIC_SPOTIFY_REDIRECT_URI:-http://homelab:3100/spotify/callback}
+    restart: unless-stopped
+    ports:
+      - "3100:3000"
+    environment:
+      # Server-side runtime env vars (API route secrets — not baked into JS)
+      LASTFM_API_KEY: ${LASTFM_API_KEY}
+      LASTFM_USERNAME: ${LASTFM_USERNAME}
+      SPOTIFY_CLIENT_SECRET: ${SPOTIFY_CLIENT_SECRET:-}
