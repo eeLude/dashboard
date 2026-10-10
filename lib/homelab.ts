@@ -38,6 +38,26 @@ export type HomelabRouterStatus = {
   status: HomelabServiceStatus;
 };
 
+export type HomelabBackup = {
+  status: "ok" | "error" | "unknown";
+  lastRun: string | null;
+  schedule: string;
+  destination: string;
+  encryption: string;
+  retention: string;
+  databases: string[];
+};
+
+export const DEFAULT_BACKUP: HomelabBackup = {
+  status: "unknown",
+  lastRun: null,
+  schedule: "Öisin klo 03:30 (systemd)",
+  destination: "Google Drive (5 Tt) via Rclone",
+  encryption: "Restic AES-256 (Zero-Knowledge)",
+  retention: "7 päivää · 4 viikkoa · 6 kuukautta",
+  databases: ["Immich", "Nextcloud", "Paperless-ngx", "Joplin"],
+};
+
 export type HomelabSnapshot = {
   online: boolean;
   lastSeen: string | null;
@@ -53,6 +73,7 @@ export type HomelabSnapshot = {
   diskFreeGb: number | null;
   services: HomelabService[];
   router: HomelabRouterStatus;
+  backup: HomelabBackup;
 };
 
 export const CONFIGURED_SERVICES: ServiceConfig[] = defaultServicesConfig;

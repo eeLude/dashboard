@@ -3,7 +3,9 @@ import fs from "fs";
 import path from "path";
 import defaultServicesConfig from "@/config/homelab-services.json";
 import {
+  DEFAULT_BACKUP,
   PLANNED_ROUTER,
+  type HomelabBackup,
   type HomelabService,
   type HomelabServiceStatus,
   type HomelabSnapshot,
@@ -13,6 +15,11 @@ import {
 export const dynamic = "force-dynamic";
 
 const GLANCES_URL = process.env.GLANCES_URL || "http://homelab:61208";
+const BACKUP_STATUS_URL =
+  process.env.BACKUP_STATUS_URL ||
+  (process.env.GLANCES_URL
+    ? process.env.GLANCES_URL.replace(/:\d+$/, ":3000/status/backup.json")
+    : "http://192.168.50.145:3000/status/backup.json");
 
 interface GlancesContainer {
   name: string;
@@ -134,8 +141,8 @@ export async function GET() {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 3500);
 
-    // Query Glances v4 API endpoints in parallel
-    const [cpuRes, memRes, fsRes, containersRes, uptimeRes, sensorsRes] =
+    // Query Glances v4 API endpoints and Homepage backup status in parallel
+    const [cpuRes, memRes, fsRes, containersRes, uptimeRes, sensorsRes, backupRes] =
       await Promise.allSettled([
         fetch(`${GLANCES_URL}/api/4/cpu`, {
           signal: controller.signal,
@@ -161,6 +168,10 @@ export async function GET() {
           signal: controller.signal,
           cache: "no-store",
         }).then((r) => (r.ok ? r.json() : null)),
+        fetch(BACKUP_STATUS_URL, {
+          signal: controller.signal,
+          cache: "no-store",
+        }).then((r) => (r.ok ? r.json() : null)),
       ]);
 
     clearTimeout(timeout);
@@ -171,6 +182,18 @@ export async function GET() {
     const containersData = containersRes.status === "fulfilled" ? containersRes.value : null;
     const uptimeData = uptimeRes.status === "fulfilled" ? uptimeRes.value : null;
     const sensorsData = sensorsRes.status === "fulfilled" ? sensorsRes.value : null;
+    const backupData = backupRes.status === "fulfilled" ? backupRes.value : null;
+
+    const backup: HomelabBackup = {
+      ...DEFAULT_BACKUP,
+      status:
+        backupData?.status?.toUpperCase() === "OK"
+          ? "ok"
+          : backupData?.status
+            ? "error"
+            : "unknown",
+      lastRun: typeof backupData?.date === "string" ? backupData.date : null,
+    };
 
     if (!cpuData && !memData && !containersData && !uptimeData) {
       return NextResponse.json<HomelabSnapshot>({
@@ -195,6 +218,7 @@ export async function GET() {
           status: "down" as const,
         })),
         router: { ...PLANNED_ROUTER, status: "down" as const },
+        backup,
       });
     }
 
@@ -295,6 +319,7 @@ export async function GET() {
         ...PLANNED_ROUTER,
         status: "up",
       },
+      backup,
     };
 
     return NextResponse.json(snapshot);
@@ -321,6 +346,7 @@ export async function GET() {
         status: "down" as const,
       })),
       router: { ...PLANNED_ROUTER, status: "down" as const },
+      backup: DEFAULT_BACKUP,
     });
   }
 }

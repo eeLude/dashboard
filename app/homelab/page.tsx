@@ -1,7 +1,7 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { ExternalLink, RefreshCw } from "lucide-react";
+import { ExternalLink, RefreshCw, ShieldCheck } from "lucide-react";
 import { LocaleToggle } from "@/components/LocaleToggle";
 import { useLocale } from "@/components/LocaleProvider";
 import { MobileLayout } from "@/components/MobileLayout";
@@ -10,6 +10,7 @@ import {
   QueryErrorBanner,
 } from "@/components/LoadingStates";
 import {
+  DEFAULT_BACKUP,
   HOMELAB_HOST,
   PLANNED_ROUTER,
   allServices,
@@ -113,6 +114,7 @@ export default function HomelabPage() {
   const snapshot = query.data ?? null;
   const services = allServices(snapshot);
   const router = snapshot?.router ?? PLANNED_ROUTER;
+  const backup = snapshot?.backup ?? DEFAULT_BACKUP;
   const online = snapshot?.online === true;
 
   return (
@@ -291,6 +293,89 @@ export default function HomelabPage() {
             </li>
           ))}
         </ul>
+      </section>
+
+      {/* Varmuuskopiot (3-2-1 Cloud Backup) */}
+      <section className="mb-4 rounded-2xl border border-zinc-800 bg-zinc-900 p-5">
+        <div className="flex items-start justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <ShieldCheck
+              className={`h-5 w-5 ${
+                backup.status === "ok"
+                  ? "text-emerald-400"
+                  : backup.status === "error"
+                    ? "text-red-400"
+                    : "text-zinc-500"
+              }`}
+            />
+            <h2 className="text-sm font-semibold uppercase tracking-wide text-zinc-400">
+              {t("homelab.backup")}
+            </h2>
+          </div>
+          <span
+            className={`rounded-md border px-2 py-0.5 text-xs font-semibold ${
+              backup.status === "ok"
+                ? "border-emerald-500/30 bg-emerald-950/30 text-emerald-400"
+                : backup.status === "error"
+                  ? "border-red-500/30 bg-red-950/30 text-red-400"
+                  : "border-zinc-700 bg-zinc-800 text-zinc-400"
+            }`}
+          >
+            {backup.status === "ok"
+              ? t("homelab.backup.ok")
+              : backup.status === "error"
+                ? t("homelab.backup.error")
+                : t("homelab.backup.unknown")}
+          </span>
+        </div>
+
+        <p className="mt-2 text-xs text-zinc-400">
+          {t("homelab.backup.desc")}
+        </p>
+
+        {backup.lastRun && (
+          <div className="mt-3 flex items-center justify-between rounded-xl border border-zinc-800/80 bg-zinc-950/50 px-3 py-2 text-xs">
+            <span className="text-zinc-500">{t("homelab.backup.lastRun")}</span>
+            <span className="font-semibold text-zinc-200">{backup.lastRun}</span>
+          </div>
+        )}
+
+        <div className="mt-3 space-y-2.5 text-xs">
+          <div className="flex items-start justify-between gap-3 border-t border-zinc-800/60 pt-2.5">
+            <span className="text-zinc-500">{t("homelab.backup.schedule")}</span>
+            <span className="text-right font-medium text-zinc-300">
+              {backup.schedule}
+            </span>
+          </div>
+
+          <div className="flex items-start justify-between gap-3 border-t border-zinc-800/60 pt-2.5">
+            <span className="text-zinc-500">{t("homelab.backup.destination")}</span>
+            <span className="text-right font-medium text-zinc-300">
+              {backup.destination}
+            </span>
+          </div>
+
+          <div className="flex items-start justify-between gap-3 border-t border-zinc-800/60 pt-2.5">
+            <span className="text-zinc-500">{t("homelab.backup.encryption")}</span>
+            <span className="text-right font-medium text-zinc-300">
+              {backup.encryption}
+            </span>
+          </div>
+
+          <div className="flex items-start justify-between gap-3 border-t border-zinc-800/60 pt-2.5">
+            <span className="text-zinc-500">{t("homelab.backup.retention")}</span>
+            <span className="text-right font-medium text-zinc-300">
+              {backup.retention}
+            </span>
+          </div>
+
+          <div className="flex items-start justify-between gap-3 border-t border-zinc-800/60 pt-2.5">
+            <span className="text-zinc-500">{t("homelab.backup.databases")}</span>
+            <span className="text-right font-medium text-zinc-300">
+              {backup.databases.join(", ")}
+            </span>
+          </div>
+        </div>
       </section>
 
       {/* Network / Router */}

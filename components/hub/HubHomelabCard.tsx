@@ -2,7 +2,7 @@
 
 import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
-import { ChevronRight, RefreshCw } from "lucide-react";
+import { ChevronRight, RefreshCw, ShieldCheck } from "lucide-react";
 import { useLocale } from "@/components/LocaleProvider";
 import { HubCard } from "@/components/hub/HubCard";
 import {
@@ -139,6 +139,31 @@ export function HubHomelabCard() {
                   </p>
                 </div>
               </div>
+
+              {/* Backup pill */}
+              {snapshot?.backup && snapshot.backup.status !== "unknown" && (
+                <div className="mt-2.5 flex items-center justify-between rounded-xl border border-zinc-800/80 bg-zinc-950/40 px-2.5 py-1.5 text-[11px]">
+                  <div className="flex items-center gap-1.5">
+                    <ShieldCheck
+                      className={`h-3.5 w-3.5 ${
+                        snapshot.backup.status === "ok"
+                          ? "text-emerald-400"
+                          : "text-red-400"
+                      }`}
+                    />
+                    <span className="font-medium text-zinc-300">
+                      {snapshot.backup.status === "ok"
+                        ? t("homelab.backup.ok")
+                        : t("homelab.backup.error")}
+                    </span>
+                  </div>
+                  {snapshot.backup.lastRun && (
+                    <span className="text-[10px] text-zinc-500">
+                      {snapshot.backup.lastRun}
+                    </span>
+                  )}
+                </div>
+              )}
             </>
           ) : (
             <>
