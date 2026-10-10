@@ -11,10 +11,10 @@ export const dynamic = "force-dynamic";
 
 const GLANCES_URL = process.env.GLANCES_URL || "http://homelab:61208";
 
-interface GlancesDockerContainer {
+interface GlancesContainer {
   name: string;
-  Status?: string;
   status?: string;
+  Status?: string;
   state?: string;
 }
 
@@ -23,39 +23,35 @@ interface GlancesFsMount {
   percent: number;
 }
 
-/** Match known container names to HomelabService ids */
-const CONTAINER_TO_SERVICE_ID: Record<string, string> = {
-  immich: "immich",
-  "immich-server": "immich",
-  immich_server: "immich",
-  nextcloud: "nextcloud",
-  "nextcloud-app": "nextcloud",
-  paperless: "paperless",
-  "paperless-web": "paperless",
-  joplin: "joplin",
-  joplin_server: "joplin",
-  syncthing: "syncthing",
-};
+/** Map container name substrings to our HomelabService ids */
+const MATCH_RULES: Array<{ serviceId: string; matches: string[] }> = [
+  { serviceId: "immich", matches: ["immich_server", "immich-server", "immich"] },
+  { serviceId: "nextcloud", matches: ["nextcloud-app", "nextcloud"] },
+  { serviceId: "paperless", matches: ["paperless-web", "paperless"] },
+  { serviceId: "joplin", matches: ["joplin_server", "joplin-server", "joplin"] },
+  { serviceId: "syncthing", matches: ["syncthing"] },
+];
 
 export async function GET() {
   try {
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 4000);
+    const timeout = setTimeout(() => controller.abort(), 3500);
 
-    const [cpuRes, memRes, fsRes, dockerRes] = await Promise.allSettled([
-      fetch(`${GLANCES_URL}/api/3/cpu`, {
+    // Glances v4 API endpoints
+    const [cpuRes, memRes, fsRes, containersRes] = await Promise.allSettled([
+      fetch(`${GLANCES_URL}/api/4/cpu`, {
         signal: controller.signal,
         cache: "no-store",
       }).then((r) => (r.ok ? r.json() : null)),
-      fetch(`${GLANCES_URL}/api/3/mem`, {
+      fetch(`${GLANCES_URL}/api/4/mem`, {
         signal: controller.signal,
         cache: "no-store",
       }).then((r) => (r.ok ? r.json() : null)),
-      fetch(`${GLANCES_URL}/api/3/fs`, {
+      fetch(`${GLANCES_URL}/api/4/fs`, {
         signal: controller.signal,
         cache: "no-store",
       }).then((r) => (r.ok ? r.json() : null)),
-      fetch(`${GLANCES_URL}/api/3/docker`, {
+      fetch(`${GLANCES_URL}/api/4/containers`, {
         signal: controller.signal,
         cache: "no-store",
       }).then((r) => (r.ok ? r.json() : null)),
@@ -66,11 +62,10 @@ export async function GET() {
     const cpuData = cpuRes.status === "fulfilled" ? cpuRes.value : null;
     const memData = memRes.status === "fulfilled" ? memRes.value : null;
     const fsData = fsRes.status === "fulfilled" ? fsRes.value : null;
-    const dockerData = dockerRes.status === "fulfilled" ? dockerRes.value : null;
+    const containersData = containersRes.status === "fulfilled" ? containersRes.value : null;
 
-    // If Glances is completely unreachable, report offline
-    if (!cpuData && !memData && !dockerData) {
-      const offlineSnapshot: HomelabSnapshot = {
+    if (!cpuData && !memData && !containersData) {
+      return NextResponse.json<HomelabSnapshot>({
         online: false,
         lastSeen: null,
         cpuPct: null,
@@ -78,8 +73,7 @@ export async function GET() {
         diskPct: null,
         services: PLANNED_SERVICES.map((s) => ({ ...s, status: "down" as const })),
         router: { ...PLANNED_ROUTER, status: "down" as const },
-      };
-      return NextResponse.json(offlineSnapshot);
+      });
     }
 
     const cpuPct = typeof cpuData?.total === "number" ? Math.round(cpuData.total) : null;
@@ -88,37 +82,39 @@ export async function GET() {
     let diskPct: number | null = null;
     if (Array.isArray(fsData)) {
       const rootMount = (fsData as GlancesFsMount[]).find(
-        (m) => m.mnt_point === "/" || m.mnt_point === "/host"
+        (m) => m.mnt_point === "/rootfs" || m.mnt_point === "/"
       );
       if (rootMount && typeof rootMount.percent === "number") {
         diskPct = Math.round(rootMount.percent);
       }
     }
 
-    // Determine status for services from docker container list
-    const runningContainers = new Set<string>();
-    if (Array.isArray(dockerData)) {
-      for (const c of dockerData as GlancesDockerContainer[]) {
-        const rawStatus = (c.Status || c.status || c.state || "").toLowerCase();
-        const isUp = rawStatus.includes("up") || rawStatus.includes("running");
+    // Inspect running containers
+    const runningContainerNames: string[] = [];
+    if (Array.isArray(containersData)) {
+      for (const c of containersData as GlancesContainer[]) {
+        const rawStatus = (c.status || c.Status || c.state || "").toLowerCase();
+        const isUp =
+          rawStatus.includes("up") ||
+          rawStatus.includes("running") ||
+          rawStatus.includes("healthy");
         if (isUp && c.name) {
-          const cleanName = c.name.replace(/^\//, "").toLowerCase();
-          runningContainers.add(cleanName);
+          runningContainerNames.push(c.name.toLowerCase());
         }
       }
     }
 
     const services: HomelabService[] = PLANNED_SERVICES.map((service) => {
+      const rule = MATCH_RULES.find((r) => r.serviceId === service.id);
       let isUp = false;
-      for (const [containerPattern, serviceId] of Object.entries(CONTAINER_TO_SERVICE_ID)) {
-        if (serviceId === service.id && runningContainers.has(containerPattern)) {
-          isUp = true;
-          break;
-        }
+
+      if (rule) {
+        isUp = runningContainerNames.some((cName) =>
+          rule.matches.some((m) => cName.includes(m))
+        );
       }
 
-      // If docker data was available, mark either up or down. If not, keep planned.
-      const status: HomelabServiceStatus = Array.isArray(dockerData)
+      const status: HomelabServiceStatus = Array.isArray(containersData)
         ? isUp
           ? "up"
           : "down"
@@ -144,18 +140,15 @@ export async function GET() {
     };
 
     return NextResponse.json(snapshot);
-  } catch (error) {
-    return NextResponse.json(
-      {
-        online: false,
-        lastSeen: null,
-        cpuPct: null,
-        memPct: null,
-        diskPct: null,
-        services: PLANNED_SERVICES.map((s) => ({ ...s, status: "down" as const })),
-        router: { ...PLANNED_ROUTER, status: "down" as const },
-      } satisfies HomelabSnapshot,
-      { status: 200 }
-    );
+  } catch {
+    return NextResponse.json<HomelabSnapshot>({
+      online: false,
+      lastSeen: null,
+      cpuPct: null,
+      memPct: null,
+      diskPct: null,
+      services: PLANNED_SERVICES.map((s) => ({ ...s, status: "down" as const })),
+      router: { ...PLANNED_ROUTER, status: "down" as const },
+    });
   }
 }
