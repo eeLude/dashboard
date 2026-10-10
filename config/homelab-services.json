@@ -1,0 +1,58 @@
+[
+  {
+    "id": "immich",
+    "name": "Immich",
+    "role": "Kuvat & videot",
+    "matches": ["immich_server", "immich-server", "immich"],
+    "href": "http://homelab:2283",
+    "showOnHub": true
+  },
+  {
+    "id": "nextcloud",
+    "name": "Nextcloud",
+    "role": "Pilvitallennus",
+    "matches": ["nextcloud-app", "nextcloud"],
+    "href": "http://homelab:8080",
+    "showOnHub": true
+  },
+  {
+    "id": "paperless",
+    "name": "Paperless-ngx",
+    "role": "Arkisto & kuitit",
+    "matches": ["paperless-web", "paperless"],
+    "href": "http://homelab:8000",
+    "showOnHub": true
+  },
+  {
+    "id": "joplin",
+    "name": "Joplin Server",
+    "role": "Muistiinpanot",
+    "matches": ["joplin_server", "joplin-server", "joplin"],
+    "href": "http://homelab:22300",
+    "showOnHub": true
+  },
+  {
+    "id": "agent-sandbox",
+    "name": "Agent Sandbox",
+    "role": "Tekoäly-kehitysympäristö (SSH 2222)",
+    "matches": ["agent-sandbox"],
+    "href": "ssh://homelab:2222",
+    "showOnHub": true
+  },
+  {
+    "id": "homepage",
+    "name": "Homepage",
+    "role": "Kojelauta",
+    "matches": ["dashboard"],
+    "href": "http://homelab:3000",
+    "showOnHub": false
+  },
+  {
+    "id": "valheim",
+    "name": "Valheim Server",
+    "role": "Pelipalvelin",
+    "matches": ["valheim-server"],
+    "href": "http://homelab:2456",
+    "showOnHub": false
+  }
+]

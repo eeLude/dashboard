@@ -149,6 +149,11 @@ const en = {
   "homelab.cpu": "CPU",
   "homelab.memory": "Memory",
   "homelab.disk": "Disk",
+  "homelab.uptime": "Uptime",
+  "homelab.temp": "Temp",
+  "homelab.free": "free",
+  "homelab.refresh": "Refresh",
+  "homelab.open": "Open",
 
   // Books page
   "books.title": "Books",
@@ -340,6 +345,11 @@ const fi: Record<keyof typeof en, string> = {
   "homelab.cpu": "CPU",
   "homelab.memory": "Muisti",
   "homelab.disk": "Levy",
+  "homelab.uptime": "Käyntiaika",
+  "homelab.temp": "Lämpö",
+  "homelab.free": "vapaana",
+  "homelab.refresh": "Päivitä",
+  "homelab.open": "Avaa",
 
   "books.title": "Kirjat",
   "books.subtitle": "Mitä luen",

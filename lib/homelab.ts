@@ -1,3 +1,5 @@
+import defaultServicesConfig from "@/config/homelab-services.json";
+
 export const HOMELAB_HOST = {
   name: "HP EliteDesk 800 G5 SFF",
   cpu: "i5-8500T",
@@ -12,11 +14,22 @@ export const HOMELAB_ROUTER = {
 
 export type HomelabServiceStatus = "planned" | "up" | "down";
 
+export type ServiceConfig = {
+  id: string;
+  name: string;
+  role: string;
+  matches?: string[];
+  href?: string;
+  showOnHub?: boolean;
+};
+
 export type HomelabService = {
   id: string;
   name: string;
   role: string;
   status: HomelabServiceStatus;
+  href?: string;
+  showOnHub?: boolean;
 };
 
 export type HomelabRouterStatus = {
@@ -28,23 +41,35 @@ export type HomelabRouterStatus = {
 export type HomelabSnapshot = {
   online: boolean;
   lastSeen: string | null;
+  uptime: string | null;
   cpuPct: number | null;
+  cpuTemp: number | null;
   memPct: number | null;
+  memUsedGb: number | null;
+  memTotalGb: number | null;
   diskPct: number | null;
+  diskUsedGb: number | null;
+  diskTotalGb: number | null;
+  diskFreeGb: number | null;
   services: HomelabService[];
   router: HomelabRouterStatus;
 };
 
-export const PLANNED_SERVICES: HomelabService[] = [
-  { id: "immich", name: "Immich", role: "Kuvat & videot", status: "planned" },
-  { id: "nextcloud", name: "Nextcloud", role: "Pilvitallennus", status: "planned" },
-  { id: "paperless", name: "Paperless-ngx", role: "Arkisto & kuitit", status: "planned" },
-  { id: "joplin", name: "Joplin Server", role: "Muistiinpanot", status: "planned" },
-  { id: "syncthing", name: "Syncthing", role: "Synkronointi", status: "planned" },
-];
+export const CONFIGURED_SERVICES: ServiceConfig[] = defaultServicesConfig;
 
-/** Four glance dots on the hub card, same order as planned services. */
-export const GLANCE_SERVICE_IDS = PLANNED_SERVICES.map((s) => s.id);
+export const PLANNED_SERVICES: HomelabService[] = CONFIGURED_SERVICES.map((s) => ({
+  id: s.id,
+  name: s.name,
+  role: s.role,
+  status: "planned",
+  href: s.href,
+  showOnHub: s.showOnHub ?? true,
+}));
+
+/** Glance dots on the hub card (services where showOnHub !== false). */
+export const GLANCE_SERVICE_IDS = PLANNED_SERVICES.filter(
+  (s) => s.showOnHub !== false
+).map((s) => s.id);
 
 export const PLANNED_ROUTER: HomelabRouterStatus = {
   name: HOMELAB_ROUTER.name,
@@ -63,7 +88,19 @@ export async function getHomelabSnapshot(): Promise<HomelabSnapshot | null> {
   }
 }
 
+/** Services highlighted on the Hub card (only showOnHub = true). */
 export function glanceServices(
+  snapshot: HomelabSnapshot | null
+): HomelabService[] {
+  const live = snapshot?.services ?? [];
+  return PLANNED_SERVICES.filter((s) => s.showOnHub !== false).map((planned) => {
+    const hit = live.find((s) => s.id === planned.id);
+    return hit ?? planned;
+  });
+}
+
+/** All configured services for the main Homelab page. */
+export function allServices(
   snapshot: HomelabSnapshot | null
 ): HomelabService[] {
   const live = snapshot?.services ?? [];
