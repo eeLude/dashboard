@@ -36,25 +36,11 @@ export type HomelabSnapshot = {
 };
 
 export const PLANNED_SERVICES: HomelabService[] = [
-  { id: "immich", name: "Immich", role: "Google Photos", status: "planned" },
-  {
-    id: "joplin",
-    name: "Joplin Server",
-    role: "Google Keep",
-    status: "planned",
-  },
-  {
-    id: "home-assistant",
-    name: "Home Assistant",
-    role: "Home + router later",
-    status: "planned",
-  },
-  {
-    id: "adguard",
-    name: "AdGuard Home",
-    role: "DNS · router points here",
-    status: "planned",
-  },
+  { id: "immich", name: "Immich", role: "Kuvat & videot", status: "planned" },
+  { id: "nextcloud", name: "Nextcloud", role: "Pilvitallennus", status: "planned" },
+  { id: "paperless", name: "Paperless-ngx", role: "Arkisto & kuitit", status: "planned" },
+  { id: "joplin", name: "Joplin Server", role: "Muistiinpanot", status: "planned" },
+  { id: "syncthing", name: "Syncthing", role: "Synkronointi", status: "planned" },
 ];
 
 /** Four glance dots on the hub card, same order as planned services. */
@@ -66,9 +52,15 @@ export const PLANNED_ROUTER: HomelabRouterStatus = {
   status: "planned",
 };
 
-/** Live snapshot once a tunnel exists. Until then this is always null. */
+/** Live snapshot fetched via the Next.js API route. */
 export async function getHomelabSnapshot(): Promise<HomelabSnapshot | null> {
-  return null;
+  try {
+    const res = await fetch("/api/homelab/snapshot");
+    if (!res.ok) return null;
+    return (await res.json()) as HomelabSnapshot;
+  } catch {
+    return null;
+  }
 }
 
 export function glanceServices(

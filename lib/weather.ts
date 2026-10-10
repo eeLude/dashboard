@@ -17,6 +17,12 @@ export type WeatherLocation = {
   name: string;
 };
 
+export const DEFAULT_WEATHER_LOCATION: WeatherLocation = {
+  lat: 63.0951,
+  lon: 21.6165,
+  name: "Vaasa",
+};
+
 export type WeatherDay = {
   date: string;
   kind: WeatherKind;
@@ -78,11 +84,11 @@ function weatherFromCode(code: number): { kind: WeatherKind; label: string } {
   return { kind: "overcast", label: "Pilvistä" };
 }
 
-export function loadSavedWeatherLocation(): WeatherLocation | null {
-  if (typeof window === "undefined") return null;
+export function loadSavedWeatherLocation(): WeatherLocation {
+  if (typeof window === "undefined") return DEFAULT_WEATHER_LOCATION;
   try {
     const raw = localStorage.getItem(WEATHER_LOCATION_KEY);
-    if (!raw) return null;
+    if (!raw) return DEFAULT_WEATHER_LOCATION;
     const parsed = JSON.parse(raw) as WeatherLocation;
     if (
       typeof parsed.lat !== "number" ||
@@ -90,7 +96,7 @@ export function loadSavedWeatherLocation(): WeatherLocation | null {
       !Number.isFinite(parsed.lat) ||
       !Number.isFinite(parsed.lon)
     ) {
-      return null;
+      return DEFAULT_WEATHER_LOCATION;
     }
     return {
       lat: parsed.lat,
@@ -98,10 +104,10 @@ export function loadSavedWeatherLocation(): WeatherLocation | null {
       name:
         typeof parsed.name === "string" && parsed.name && parsed.name !== "Local"
           ? parsed.name
-          : "Paikallinen",
+          : "Vaasa",
     };
   } catch {
-    return null;
+    return DEFAULT_WEATHER_LOCATION;
   }
 }
 
