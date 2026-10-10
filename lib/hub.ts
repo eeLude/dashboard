@@ -6,7 +6,6 @@ import { HubElectricityCard } from "@/components/hub/HubElectricityCard";
 import { HubFlagDayCard } from "@/components/hub/HubFlagDayCard";
 import { HubGymCard } from "@/components/hub/HubGymCard";
 import { HubHomelabCard } from "@/components/hub/HubHomelabCard";
-import { HubMoodCard } from "@/components/hub/HubMoodCard";
 import { HubSpotifyCard } from "@/components/hub/HubSpotifyCard";
 import { HubWeatherCard } from "@/components/hub/HubWeatherCard";
 
@@ -19,7 +18,6 @@ export type HubModule = {
 export const HUB_MODULES: HubModule[] = [
   { id: "weather", Card: HubWeatherCard },
   { id: "electricity", Card: HubElectricityCard },
-  { id: "mood", Card: HubMoodCard },
   { id: "gym", Card: HubGymCard },
   { id: "homelab", Card: HubHomelabCard },
   { id: "flag-day", Card: HubFlagDayCard },

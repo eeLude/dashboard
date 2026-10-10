@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { LocaleToggle } from "@/components/LocaleToggle";
 import { useLocale } from "@/components/LocaleProvider";
 import { HealthLogCard } from "@/components/HealthLogCard";
+import { MoodLogCard } from "@/components/MoodLogCard";
 import { MobileLayout } from "@/components/MobileLayout";
 import { MuscleGroupCards } from "@/components/MuscleGroupCards";
 import { WorkoutContributionGraph } from "@/components/WorkoutContributionGraph";
@@ -145,6 +146,14 @@ export default function GymDashboardPage() {
         </h2>
         <p className="mb-3 text-xs text-zinc-500">{t("gym.logToday")}</p>
         <HealthLogCard />
+      </section>
+
+      <section className="mb-6 rounded-2xl border border-zinc-800 bg-zinc-900 p-4">
+        <h2 className="mb-1 text-sm font-semibold uppercase tracking-wide text-zinc-400">
+          {t("card.mood")}
+        </h2>
+        <p className="mb-3 text-xs text-zinc-500">{t("moodPage.subtitle")}</p>
+        <MoodLogCard />
       </section>
 
       <section className="mb-6 rounded-2xl border border-zinc-800 bg-zinc-900 p-4">
