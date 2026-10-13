@@ -52,7 +52,7 @@ Splits (Push / Pull / Legs / Upper / Run) → session → exercises → sets. Au
 
 **Estimated 1RM (Epley, reps capped at 12) is the primary strength metric**, not top weight: 70 kg × 12 is progress over 70 kg × 10 even though the weight is flat. It drives the main line in `ProgressiveOverloadChart`, `pickBestSet`, and the direction of `formatProgressChange`. Top weight stays as a faint secondary line. Cardio movements are excluded from e1RM everywhere, since their `reps`/`weight_kg` mean minutes and km.
 
-**Body weight trend is weekly, never daily.** `getWeightTrend` in `lib/goals.ts` is the single source for every weight card: a smoothed 7-calendar-day average vs. ~7 days earlier once there are 13+ days of logs, otherwise the raw week-over-week delta (`method: "raw"`). Goal bands are only judged against the smoothed rate. Render it with `formatWeightTrend` so the hub and gym cards cannot drift apart, and use `calendarRollingAverage` (calendar days, not entry count) for trend lines.
+**Body weight trend is weekly, never daily.** `getWeightTrend` in `lib/goals.ts` is the single source for every weight card: a smoothed 7-calendar-day average vs. ~14–21 days earlier normalized by elapsed weeks once there are 13+ days of logs, otherwise the raw week-over-week delta (`method: "raw"`). Goal bands are judged with a tolerance margin against the smoothed multi-week rate to filter daily water noise. Body weight tracking includes a weekly averages table (`getWeeklyWeightSummaries`) grouping logs by Monday–Sunday weeks. Render it with `formatWeightTrend` so the hub and gym cards cannot drift apart, and use `calendarRollingAverage` (calendar days, not entry count) for trend lines.
 
 ## Other hub cards
 
