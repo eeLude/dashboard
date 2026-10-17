@@ -13,6 +13,7 @@ import {
 import { HubWeightChart } from "@/components/charts/HubWeightChart";
 import { HubRunChart } from "@/components/charts/HubRunChart";
 import {
+  getActiveWorkoutSession,
   getHealthLogs,
   getRunProgress,
   getWorkoutDaysInRange,
@@ -41,12 +42,18 @@ export function HubGymCard() {
     queryFn: getRunProgress,
   });
 
+  const activeSessionQuery = useQuery({
+    queryKey: ["active-workout-session"],
+    queryFn: getActiveWorkoutSession,
+  });
+
   const yearDays = workoutsQuery.data ?? [];
   const sessionsThisYear = yearDays.filter((d) => d.isComplete).length;
   const isLoading = workoutsQuery.isLoading || healthQuery.isLoading;
   const isError = workoutsQuery.isError || healthQuery.isError;
   const hasWeight = (healthQuery.data ?? []).some((l) => l.weight_kg != null);
   const runs = runQuery.data ?? [];
+  const activeSession = activeSessionQuery.data;
 
   return (
     <HubCard
@@ -61,10 +68,16 @@ export function HubGymCard() {
             <ChevronRight className="h-4 w-4" />
           </Link>
           <Link
-            href="/workout"
-            className="inline-flex flex-1 items-center justify-center rounded-xl bg-brand py-2.5 text-sm font-semibold text-white"
+            href={
+              activeSession
+                ? `/workout/${activeSession.split_id}?date=${activeSession.date}`
+                : "/workout"
+            }
+            className="inline-flex flex-1 items-center justify-center rounded-xl bg-brand py-2.5 text-sm font-semibold text-white shadow-md shadow-brand/30 active:scale-[0.98]"
           >
-            {t("hub.gym.logWorkout")}
+            {activeSession
+              ? `⚡ Resume (${activeSession.splitName})`
+              : t("hub.gym.logWorkout")}
           </Link>
         </div>
       }

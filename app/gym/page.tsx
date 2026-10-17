@@ -16,6 +16,7 @@ import {
   LoadingSpinner,
   QueryErrorBanner,
 } from "@/components/LoadingStates";
+import { ActiveWorkoutBanner } from "@/components/workout/ActiveWorkoutBanner";
 import { BodyWeightChart } from "@/components/charts/BodyWeightChart";
 import { ProgressiveOverloadChart } from "@/components/charts/ProgressiveOverloadChart";
 import { HealthTrendChart } from "@/components/charts/HealthTrendChart";
@@ -110,6 +111,8 @@ export default function GymDashboardPage() {
           </Link>
         </div>
       </header>
+
+      <ActiveWorkoutBanner />
 
       {failedQueries.length > 0 && (
         <QueryErrorBanner

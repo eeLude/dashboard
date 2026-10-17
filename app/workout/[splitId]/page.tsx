@@ -18,10 +18,11 @@ import { MovementPicker } from "@/components/workout/MovementPicker";
 import { SaveStatusText } from "@/components/workout/SaveStatusText";
 import { useActiveWorkout } from "@/lib/useActiveWorkout";
 import {
+  getActiveWorkoutSession,
   getAllMovements,
+  getSessionForSplitAndDate,
   getSplitById,
   getSplitTemplate,
-  getWorkoutSessionForDate,
   invalidateWorkoutDashboardQueries,
 } from "@/lib/queries";
 import { formatFiDate, isFutureDate, toDateString } from "@/lib/dates";
@@ -76,23 +77,16 @@ function ActiveWorkoutContent({
   });
 
   const sessionForDateQuery = useQuery({
-    queryKey: ["workout-session-for-date", workoutDate],
-    queryFn: () => getWorkoutSessionForDate(workoutDate),
+    queryKey: ["session-for-split-date", splitId, workoutDate],
+    queryFn: () => getSessionForSplitAndDate(splitId, workoutDate),
   });
 
-  useEffect(() => {
-    if (!sessionForDateQuery.data) return;
-    if (sessionForDateQuery.data.split_id !== splitId) {
-      router.replace(
-        `/workout/${sessionForDateQuery.data.split_id}?date=${workoutDate}`
-      );
-    }
-  }, [sessionForDateQuery.data, splitId, workoutDate, router]);
+  const otherActiveSessionQuery = useQuery({
+    queryKey: ["active-workout-session"],
+    queryFn: getActiveWorkoutSession,
+  });
 
-  const loggerReady =
-    sessionForDateQuery.isSuccess &&
-    (!sessionForDateQuery.data ||
-      sessionForDateQuery.data.split_id === splitId);
+  const loggerReady = sessionForDateQuery.isSuccess;
 
   const buildInitialCards = useCallback(() => {
     return (
@@ -112,6 +106,40 @@ function ActiveWorkoutContent({
   const [showPicker, setShowPicker] = useState(false);
   const [startingFresh, setStartingFresh] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [highlightedMovementId, setHighlightedMovementId] = useState<string | null>(
+    null
+  );
+
+  const existingMovementIds = useMemo(
+    () => new Set(workout.cards.map((c) => c.performedMovementId)),
+    [workout.cards]
+  );
+
+  const scrollToCard = useCallback((movementId: string) => {
+    setHighlightedMovementId(movementId);
+    setTimeout(() => {
+      const el = document.getElementById(`exercise-card-${movementId}`);
+      if (el) {
+        el.scrollIntoView({ behavior: "smooth", block: "center" });
+      }
+    }, 100);
+    setTimeout(() => {
+      setHighlightedMovementId(null);
+    }, 1600);
+  }, []);
+
+  const handleAddCard = (movement: Movement) => {
+    const added = workout.addCard(cardFromMovement(movement));
+    setShowPicker(false);
+    if (added) {
+      scrollToCard(movement.id);
+    }
+  };
+
+  const handleSelectExisting = (movementId: string) => {
+    setShowPicker(false);
+    scrollToCard(movementId);
+  };
 
   const finishMutation = useMutation({
     mutationFn: () => workout.finishWorkout(),
@@ -136,11 +164,6 @@ function ActiveWorkoutContent({
     } finally {
       setStartingFresh(false);
     }
-  };
-
-  const handleAddCard = (movement: Movement) => {
-    workout.addCard(cardFromMovement(movement));
-    setShowPicker(false);
   };
 
   const muscleGroups = useMemo(
@@ -192,6 +215,22 @@ function ActiveWorkoutContent({
         </div>
       </header>
 
+      {otherActiveSessionQuery.data &&
+        otherActiveSessionQuery.data.split_id !== splitId &&
+        otherActiveSessionQuery.data.date === workoutDate && (
+          <div className="mb-4 flex items-center justify-between gap-2 rounded-xl border border-amber-800/40 bg-amber-950/20 px-3 py-2 text-xs text-amber-300">
+            <span>
+              Unfinished {otherActiveSessionQuery.data.splitName} workout today.
+            </span>
+            <Link
+              href={`/workout/${otherActiveSessionQuery.data.split_id}?date=${workoutDate}`}
+              className="shrink-0 font-medium underline"
+            >
+              Resume it
+            </Link>
+          </div>
+        )}
+
       {workout.isResuming && !isRunSplit && (
         <div className="mb-4 flex items-center justify-between gap-2 rounded-xl border border-brand/30 bg-brand/5 px-3 py-2 text-sm">
           <span className="text-zinc-300">
@@ -231,6 +270,7 @@ function ActiveWorkoutContent({
                 onMoveDown={() => void workout.moveCard(draft.cardId, "down")}
                 sessionId={workout.sessionId}
                 workoutDate={workoutDate}
+                isHighlighted={highlightedMovementId === draft.performedMovementId}
               />
             ))}
 
@@ -246,7 +286,9 @@ function ActiveWorkoutContent({
               <MovementPicker
                 movements={movementsQuery.data ?? []}
                 muscleGroups={muscleGroups}
+                existingMovementIds={existingMovementIds}
                 onSelect={handleAddCard}
+                onSelectExisting={handleSelectExisting}
                 onClose={() => setShowPicker(false)}
               />
             </div>

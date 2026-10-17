@@ -8,6 +8,7 @@ import {
   deleteSessionExercise,
   deleteWorkoutSession,
   getLastCompletedSessionCards,
+  getSessionForSplitAndDate,
   getWorkoutSessionForDate,
   isWorkoutSessionCompleted,
   loadSessionCards,
@@ -94,9 +95,8 @@ function isSameCard(a: WorkoutCardDraft, b: WorkoutCardDraft): boolean {
   if (b.sessionExerciseId && a.cardId === b.sessionExerciseId) return true;
   if (a.sessionExerciseId && a.sessionExerciseId === b.cardId) return true;
   if (a.slotId && a.slotId === b.slotId) return true;
-  // A movement is logged at most once per session, so an unslotted card with
-  // the same movement is the same exercise carrying a stale draft id.
-  if (!a.slotId && !b.slotId && a.performedMovementId === b.performedMovementId) {
+  // A movement is logged at most once per session
+  if (a.performedMovementId && a.performedMovementId === b.performedMovementId) {
     return true;
   }
   return false;
@@ -347,7 +347,10 @@ export function useActiveWorkout({
 
     (async () => {
       try {
-        const sessionForDate = await getWorkoutSessionForDate(workoutDate);
+        const sessionForDate = await getSessionForSplitAndDate(
+          splitId,
+          workoutDate
+        );
         let sid: string;
         let resumed = false;
         let loaded: WorkoutCardDraft[] = [];
@@ -365,10 +368,10 @@ export function useActiveWorkout({
           }
         }
 
-        setSessionId(sid);
-        setIsResuming(resumed);
-
         const isCompleted = !!sessionForDate?.completed_at;
+        setSessionId(sid);
+        setIsResuming(!isCompleted && resumed);
+
         if (isCompleted) {
           clearDraft(sid);
         }
@@ -469,13 +472,21 @@ export function useActiveWorkout({
   );
 
   const addCard = useCallback((draft: WorkoutCardDraft) => {
-    setCards((prev) => {
-      // One row per movement per session, so re-adding is a no-op.
-      if (prev.some((c) => isSameCard(c, draft))) return prev;
-      const next = [...prev, draft];
-      if (sessionIdRef.current) writeDraft(sessionIdRef.current, next);
-      return next;
-    });
+    const prev = cardsRef.current;
+    if (
+      prev.some(
+        (c) =>
+          c.performedMovementId === draft.performedMovementId ||
+          isSameCard(c, draft)
+      )
+    ) {
+      return false;
+    }
+    const next = [...prev, draft];
+    cardsRef.current = next;
+    setCards(next);
+    if (sessionIdRef.current) writeDraft(sessionIdRef.current, next);
+    return true;
   }, []);
 
   const moveCard = useCallback(async (cardId: string, direction: "up" | "down") => {
@@ -735,12 +746,15 @@ export function useRunAutosave({
 
     (async () => {
       try {
-        const sessionForDate = await getWorkoutSessionForDate(workoutDate);
+        const sessionForDate = await getSessionForSplitAndDate(
+          splitId,
+          workoutDate
+        );
         let sid: string;
 
         if (sessionForDate) {
           sid = sessionForDate.id;
-          setIsResuming(true);
+          setIsResuming(!sessionForDate.completed_at);
           const cards = await loadSessionCards(sid);
           const runCard = cards[0];
           if (runCard?.sessionExerciseId) {

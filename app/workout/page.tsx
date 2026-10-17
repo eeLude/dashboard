@@ -28,10 +28,12 @@ function WorkoutPickerContent() {
     queryFn: getSplits,
   });
 
+  const isCompleted = !!sessionQuery.data?.completed_at;
+
   useEffect(() => {
-    if (pickSplit || !sessionQuery.data) return;
+    if (pickSplit || !sessionQuery.data || isCompleted) return;
     router.replace(`/workout/${sessionQuery.data.split_id}?date=${date}`);
-  }, [pickSplit, sessionQuery.data, date, router]);
+  }, [pickSplit, sessionQuery.data, isCompleted, date, router]);
 
   if (sessionQuery.isLoading) {
     return (
@@ -49,11 +51,11 @@ function WorkoutPickerContent() {
     );
   }
 
-  if (sessionQuery.data && !pickSplit) {
+  if (sessionQuery.data && !isCompleted && !pickSplit) {
     return (
       <div className="flex items-center justify-center gap-2 py-8 text-zinc-500">
         <LoadingSpinner className="h-5 w-5" />
-        Opening workout...
+        Opening active workout...
       </div>
     );
   }
@@ -71,6 +73,48 @@ function WorkoutPickerContent() {
           Could not load splits. Sign in and check your connection.
         </p>
       )}
+
+      {sessionQuery.data && !isCompleted && (
+        <div className="mb-4 flex items-center justify-between rounded-2xl border border-brand/40 bg-brand/10 p-4">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wide text-brand">
+              In-progress workout
+            </p>
+            <p className="text-base font-semibold text-zinc-100">
+              {sessionQuery.data.splitName}
+            </p>
+          </div>
+          <Link
+            href={`/workout/${sessionQuery.data.split_id}?date=${date}`}
+            className="rounded-xl bg-brand px-3.5 py-2 text-sm font-semibold text-white shadow-md shadow-brand/30"
+          >
+            Resume
+          </Link>
+        </div>
+      )}
+
+      {sessionQuery.data && isCompleted && (
+        <div className="mb-4 flex items-center justify-between rounded-2xl border border-zinc-800 bg-zinc-900/60 p-4">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500">
+              Completed today
+            </p>
+            <p className="text-base font-semibold text-zinc-200">
+              {sessionQuery.data.splitName}
+            </p>
+          </div>
+          <Link
+            href={`/workout/${sessionQuery.data.split_id}?date=${date}`}
+            className="rounded-xl border border-zinc-700 px-3 py-1.5 text-xs font-medium text-zinc-300 hover:border-zinc-500"
+          >
+            View workout
+          </Link>
+        </div>
+      )}
+
+      <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-zinc-500">
+        {sessionQuery.data ? "Or start another split" : "Select split"}
+      </p>
 
       <div className="space-y-3">
         {splitsQuery.data?.map((split) => (

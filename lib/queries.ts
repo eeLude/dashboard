@@ -19,6 +19,7 @@ import {
   calculateOneRepMax,
   formatLocaleNumber,
   formatProgressChange,
+  generateUUID,
   getWeekStart,
   isCardioMuscle,
   listMondayWeekStarts,
@@ -516,6 +517,72 @@ export async function getWorkoutSessionForDate(
   };
 }
 
+export async function getSessionForSplitAndDate(
+  splitId: string,
+  date: string
+): Promise<WorkoutSessionWithSplit | null> {
+  const { data, error } = await supabase
+    .from("workout_sessions")
+    .select("*, workout_splits(name)")
+    .eq("split_id", splitId)
+    .eq("date", date)
+    .order("created_at", { ascending: false });
+  if (error) throw error;
+  if (!data || data.length === 0) return null;
+
+  // Prefer an active in-progress session if one exists
+  const active = data.find((s) => s.completed_at == null);
+  const selected = active ?? data[0];
+
+  const { workout_splits, ...session } = selected as WorkoutSession & {
+    workout_splits: { name: string };
+  };
+  return {
+    ...session,
+    splitName: workout_splits.name,
+  };
+}
+
+export async function getActiveWorkoutSession(): Promise<WorkoutSessionWithSplit | null> {
+  const { data, error } = await supabase
+    .from("workout_sessions")
+    .select("*, workout_splits(name)")
+    .is("completed_at", null)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error) throw error;
+  if (!data) return null;
+
+  const { workout_splits, ...session } = data as WorkoutSession & {
+    workout_splits: { name: string };
+  };
+  return {
+    ...session,
+    splitName: workout_splits.name,
+  };
+}
+
+export async function getCompletedSessionsForDate(
+  date: string
+): Promise<WorkoutSessionWithSplit[]> {
+  const { data, error } = await supabase
+    .from("workout_sessions")
+    .select("*, workout_splits(name)")
+    .eq("date", date)
+    .not("completed_at", "is", null)
+    .order("completed_at", { ascending: false });
+  if (error) throw error;
+  if (!data) return [];
+
+  return (
+    data as (WorkoutSession & { workout_splits: { name: string } })[]
+  ).map(({ workout_splits, ...session }) => ({
+    ...session,
+    splitName: workout_splits.name,
+  }));
+}
+
 export async function loadSessionCards(
   sessionId: string
 ): Promise<WorkoutCardDraft[]> {
@@ -588,7 +655,7 @@ export async function getLastCompletedSessionCards(
     }));
 
     return {
-      cardId: card.slotId ?? crypto.randomUUID(),
+      cardId: card.slotId ?? generateUUID(),
       slotId: card.slotId,
       sessionExerciseId: undefined,
       performedMovementId: card.performedMovementId,
@@ -919,6 +986,9 @@ export async function invalidateWorkoutDashboardQueries(
     queryClient.invalidateQueries({ queryKey: ["workout-days"] }),
     queryClient.invalidateQueries({ queryKey: ["workout-days-range"] }),
     queryClient.invalidateQueries({ queryKey: ["workout-session-for-date"] }),
+    queryClient.invalidateQueries({ queryKey: ["session-for-split-date"] }),
+    queryClient.invalidateQueries({ queryKey: ["active-workout-session"] }),
+    queryClient.invalidateQueries({ queryKey: ["completed-sessions-for-date"] }),
     queryClient.invalidateQueries({ queryKey: ["weekly-volume"] }),
     queryClient.invalidateQueries({ queryKey: ["weekly-training-volume"] }),
     queryClient.invalidateQueries({ queryKey: ["muscle-group-progress"] }),

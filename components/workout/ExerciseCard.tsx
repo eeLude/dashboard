@@ -3,7 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ChevronDown, ChevronUp, Copy, Plus, Trash2 } from "lucide-react";
 import { getPreviousMovementPerformance } from "@/lib/queries";
-import { formatPreviousSets, formatLocaleNumber } from "@/lib/utils";
+import { formatPreviousSets, formatLocaleNumber, generateUUID } from "@/lib/utils";
 import { formatFiDate } from "@/lib/dates";
 import type { Movement, SetInput, WorkoutCardDraft } from "@/types/database";
 
@@ -33,7 +33,7 @@ export function cardFromTemplate(slot: {
 
 export function cardFromMovement(movement: Movement): WorkoutCardDraft {
   return {
-    cardId: crypto.randomUUID(),
+    cardId: generateUUID(),
     slotId: null,
     performedMovementId: movement.id,
     performedName: movement.name,
@@ -53,6 +53,7 @@ export function ExerciseCard({
   onMoveDown,
   sessionId,
   workoutDate,
+  isHighlighted = false,
 }: {
   draft: WorkoutCardDraft;
   onChange: (draft: WorkoutCardDraft) => void;
@@ -63,6 +64,7 @@ export function ExerciseCard({
   onMoveDown?: () => void;
   sessionId?: string | null;
   workoutDate?: string;
+  isHighlighted?: boolean;
 }) {
   const lookupId = draft.performedMovementId;
 
@@ -104,7 +106,14 @@ export function ExerciseCard({
   };
 
   return (
-    <div className="rounded-2xl border border-zinc-800 bg-zinc-900 p-4">
+    <div
+      id={`exercise-card-${draft.performedMovementId}`}
+      className={`rounded-2xl border bg-zinc-900 p-4 transition-all duration-300 ${
+        isHighlighted
+          ? "border-brand ring-2 ring-brand/50 shadow-lg shadow-brand/20"
+          : "border-zinc-800"
+      }`}
+    >
       <div className="mb-2 flex items-start justify-between gap-2">
         <div className="min-w-0 flex-1">
           <h3 className="text-lg font-semibold text-zinc-100">
