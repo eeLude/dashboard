@@ -2,8 +2,8 @@
 
 import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
-import { Suspense, useEffect } from "react";
+import { useSearchParams } from "next/navigation";
+import { Suspense } from "react";
 import { ArrowLeft, ChevronRight } from "lucide-react";
 import { LoadingSpinner } from "@/components/LoadingStates";
 import { MobileLayout } from "@/components/MobileLayout";
@@ -11,7 +11,6 @@ import { formatFiDate, isFutureDate, toDateString } from "@/lib/dates";
 import { getSplits, getWorkoutSessionForDate } from "@/lib/queries";
 
 function WorkoutPickerContent() {
-  const router = useRouter();
   const searchParams = useSearchParams();
   const dateParam = searchParams.get("date");
   const date =
@@ -30,11 +29,6 @@ function WorkoutPickerContent() {
 
   const isCompleted = !!sessionQuery.data?.completed_at;
 
-  useEffect(() => {
-    if (pickSplit || !sessionQuery.data || isCompleted) return;
-    router.replace(`/workout/${sessionQuery.data.split_id}?date=${date}`);
-  }, [pickSplit, sessionQuery.data, isCompleted, date, router]);
-
   if (sessionQuery.isLoading) {
     return (
       <div className="flex justify-center py-8">
@@ -48,15 +42,6 @@ function WorkoutPickerContent() {
       <p className="text-center text-sm text-red-400">
         Could not load workout for this date. Check your connection and try again.
       </p>
-    );
-  }
-
-  if (sessionQuery.data && !isCompleted && !pickSplit) {
-    return (
-      <div className="flex items-center justify-center gap-2 py-8 text-zinc-500">
-        <LoadingSpinner className="h-5 w-5" />
-        Opening active workout...
-      </div>
     );
   }
 

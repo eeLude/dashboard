@@ -5,8 +5,6 @@ import { usePathname } from "next/navigation";
 import { Activity, BookOpen, Home, Server } from "lucide-react";
 import { useLocale } from "@/components/LocaleProvider";
 import type { MessageKey } from "@/lib/i18n/messages";
-import { useQuery } from "@tanstack/react-query";
-import { getActiveWorkoutSession } from "@/lib/queries";
 
 const navItems: {
   href: string;
@@ -28,10 +26,6 @@ const navItems: {
 export function BottomNav() {
   const pathname = usePathname();
   const { t } = useLocale();
-  const { data: activeSession } = useQuery({
-    queryKey: ["active-workout-session"],
-    queryFn: getActiveWorkoutSession,
-  });
 
   return (
     <nav className="fixed bottom-0 left-0 right-0 z-50 border-t border-zinc-800 bg-zinc-950/95 backdrop-blur safe-bottom">
@@ -45,9 +39,6 @@ export function BottomNav() {
                   p === "/" ? pathname === "/" : pathname.startsWith(p)
                 );
 
-          const isGymTab = href === "/gym";
-          const hasActiveWorkout = isGymTab && !!activeSession;
-
           return (
             <Link
               key={href}
@@ -56,12 +47,7 @@ export function BottomNav() {
                 active ? "text-brand" : "text-zinc-500 hover:text-zinc-300"
               }`}
             >
-              <div className="relative">
-                <Icon className="h-5 w-5" strokeWidth={active ? 2.5 : 2} />
-                {hasActiveWorkout && !active && (
-                  <span className="absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full bg-brand animate-pulse" />
-                )}
-              </div>
+              <Icon className="h-5 w-5" strokeWidth={active ? 2.5 : 2} />
               {t(labelKey)}
             </Link>
           );

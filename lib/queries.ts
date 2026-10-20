@@ -1319,15 +1319,35 @@ export async function upsertHealthLog(
   return data;
 }
 
-export async function getTodayHealthLog(): Promise<HealthLog | null> {
-  const today = toDateString(new Date());
+export async function getHealthLogByDate(date: string): Promise<HealthLog | null> {
   const { data, error } = await supabase
     .from("health_logs")
     .select("*")
-    .eq("date", today)
+    .eq("date", date)
     .maybeSingle();
   if (error) throw error;
   return data;
+}
+
+export async function deleteHealthLog(date: string): Promise<void> {
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser();
+  if (authError) throw authError;
+  if (!user) throw new Error("Not authenticated");
+
+  const { error } = await supabase
+    .from("health_logs")
+    .delete()
+    .eq("user_id", user.id)
+    .eq("date", date);
+  if (error) throw error;
+}
+
+export async function getTodayHealthLog(): Promise<HealthLog | null> {
+  const today = toDateString(new Date());
+  return getHealthLogByDate(today);
 }
 
 export async function getUserProfile(): Promise<UserProfile | null> {

@@ -18,7 +18,6 @@ import { MovementPicker } from "@/components/workout/MovementPicker";
 import { SaveStatusText } from "@/components/workout/SaveStatusText";
 import { useActiveWorkout } from "@/lib/useActiveWorkout";
 import {
-  getActiveWorkoutSession,
   getAllMovements,
   getSessionForSplitAndDate,
   getSplitById,
@@ -79,11 +78,6 @@ function ActiveWorkoutContent({
   const sessionForDateQuery = useQuery({
     queryKey: ["session-for-split-date", splitId, workoutDate],
     queryFn: () => getSessionForSplitAndDate(splitId, workoutDate),
-  });
-
-  const otherActiveSessionQuery = useQuery({
-    queryKey: ["active-workout-session"],
-    queryFn: getActiveWorkoutSession,
   });
 
   const loggerReady = sessionForDateQuery.isSuccess;
@@ -227,22 +221,6 @@ function ActiveWorkoutContent({
           </div>
         </div>
       </header>
-
-      {otherActiveSessionQuery.data &&
-        otherActiveSessionQuery.data.split_id !== splitId &&
-        otherActiveSessionQuery.data.date === workoutDate && (
-          <div className="mb-4 flex items-center justify-between gap-2 rounded-xl border border-amber-800/40 bg-amber-950/20 px-3 py-2 text-xs text-amber-300">
-            <span>
-              Unfinished {otherActiveSessionQuery.data.splitName} workout today.
-            </span>
-            <Link
-              href={`/workout/${otherActiveSessionQuery.data.split_id}?date=${workoutDate}`}
-              className="shrink-0 font-medium underline"
-            >
-              Resume it
-            </Link>
-          </div>
-        )}
 
       {workout.isResuming && !isRunSplit && (
         <div className="mb-4 flex items-center justify-between gap-2 rounded-xl border border-brand/30 bg-brand/5 px-3 py-2 text-sm">
