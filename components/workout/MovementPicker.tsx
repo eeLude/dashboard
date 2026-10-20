@@ -1,7 +1,7 @@
 "use client";
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Plus, X } from "lucide-react";
 import { getOrCreateMovement } from "@/lib/queries";
 import type { Movement } from "@/types/database";
@@ -61,6 +61,24 @@ export function MovementPicker({
   const [search, setSearch] = useState("");
   const [targetMuscle, setTargetMuscle] = useState(muscleGroups[0] ?? "Chest");
   const [createError, setCreateError] = useState<string | null>(null);
+
+  const lastTouchTime = useRef(0);
+  const touchCoords = useRef<{ x: number; y: number } | null>(null);
+
+  const handleSelectMovement = (m: Movement) => {
+    if (typeof document !== "undefined" && document.activeElement instanceof HTMLElement) {
+      document.activeElement.blur();
+    }
+    if (existingMovementIds.has(m.id)) {
+      if (onSelectExisting) {
+        onSelectExisting(m.id);
+      } else {
+        onClose();
+      }
+    } else {
+      onSelect(m);
+    }
+  };
 
   useEffect(() => {
     const guessed = guessMuscleGroup(search, muscleGroups);
@@ -151,26 +169,36 @@ export function MovementPicker({
                   <button
                     key={m.id}
                     type="button"
-                    onClick={() => {
-                      if (isAlreadyAdded) {
-                        if (onSelectExisting) {
-                          onSelectExisting(m.id);
-                        } else {
-                          onClose();
+                    onTouchStart={(e) => {
+                      touchCoords.current = {
+                        x: e.touches[0].clientX,
+                        y: e.touches[0].clientY,
+                      };
+                    }}
+                    onTouchEnd={(e) => {
+                      if (touchCoords.current) {
+                        const dx = Math.abs(e.changedTouches[0].clientX - touchCoords.current.x);
+                        const dy = Math.abs(e.changedTouches[0].clientY - touchCoords.current.y);
+                        touchCoords.current = null;
+                        if (dx < 12 && dy < 12) {
+                          lastTouchTime.current = Date.now();
+                          handleSelectMovement(m);
                         }
-                      } else {
-                        onSelect(m);
                       }
                     }}
-                    className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm transition ${
+                    onClick={() => {
+                      if (Date.now() - lastTouchTime.current < 500) return;
+                      handleSelectMovement(m);
+                    }}
+                    className={`flex w-full min-h-[44px] items-center justify-between rounded-xl px-3.5 py-2.5 text-left text-sm cursor-pointer touch-manipulation select-none active:bg-zinc-800 transition ${
                       isAlreadyAdded
                         ? "bg-zinc-800/40 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200"
-                        : "text-zinc-200 hover:bg-zinc-800"
+                        : "text-zinc-200 hover:bg-zinc-800 active:bg-zinc-800"
                     }`}
                   >
-                    <span>{m.name}</span>
+                    <span className="pointer-events-none font-medium">{m.name}</span>
                     {isAlreadyAdded && (
-                      <span className="rounded border border-zinc-700 bg-zinc-800 px-1.5 py-0.5 text-[11px] font-medium text-brand">
+                      <span className="pointer-events-none rounded border border-zinc-700 bg-zinc-800 px-1.5 py-0.5 text-[11px] font-medium text-brand">
                         Added
                       </span>
                     )}
@@ -203,12 +231,31 @@ export function MovementPicker({
           </select>
           <button
             type="button"
+            onTouchStart={(e) => {
+              touchCoords.current = {
+                x: e.touches[0].clientX,
+                y: e.touches[0].clientY,
+              };
+            }}
+            onTouchEnd={(e) => {
+              if (touchCoords.current) {
+                const dx = Math.abs(e.changedTouches[0].clientX - touchCoords.current.x);
+                const dy = Math.abs(e.changedTouches[0].clientY - touchCoords.current.y);
+                touchCoords.current = null;
+                if (dx < 12 && dy < 12) {
+                  lastTouchTime.current = Date.now();
+                  setCreateError(null);
+                  createMutation.mutate();
+                }
+              }
+            }}
             onClick={() => {
+              if (Date.now() - lastTouchTime.current < 500) return;
               setCreateError(null);
               createMutation.mutate();
             }}
             disabled={createMutation.isPending || muscleGroups.length === 0}
-            className="flex w-full items-center justify-center gap-2 rounded-xl bg-brand px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-60"
+            className="flex w-full min-h-[44px] items-center justify-center gap-2 rounded-xl bg-brand px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-60 cursor-pointer touch-manipulation select-none active:bg-brand/90"
           >
             <Plus className="h-4 w-4" />
             {createMutation.isPending ? "Adding..." : `Add "${trimmedSearch}"`}

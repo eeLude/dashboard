@@ -476,8 +476,10 @@ export function useActiveWorkout({
     if (
       prev.some(
         (c) =>
-          c.performedMovementId === draft.performedMovementId ||
-          isSameCard(c, draft)
+          Boolean(
+            c.performedMovementId &&
+              c.performedMovementId === draft.performedMovementId
+          )
       )
     ) {
       return false;

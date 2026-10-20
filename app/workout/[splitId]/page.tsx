@@ -118,21 +118,34 @@ function ActiveWorkoutContent({
   const scrollToCard = useCallback((movementId: string) => {
     setHighlightedMovementId(movementId);
     setTimeout(() => {
-      const el = document.getElementById(`exercise-card-${movementId}`);
-      if (el) {
-        el.scrollIntoView({ behavior: "smooth", block: "center" });
+      try {
+        const el = document.getElementById(`exercise-card-${movementId}`);
+        if (el) {
+          el.scrollIntoView({ behavior: "smooth", block: "center" });
+        }
+      } catch {
+        try {
+          const el = document.getElementById(`exercise-card-${movementId}`);
+          el?.scrollIntoView();
+        } catch {
+          // ignore fallback
+        }
       }
-    }, 100);
+    }, 150);
     setTimeout(() => {
       setHighlightedMovementId(null);
     }, 1600);
   }, []);
 
   const handleAddCard = (movement: Movement) => {
-    const added = workout.addCard(cardFromMovement(movement));
-    setShowPicker(false);
-    if (added) {
+    try {
+      const draft = cardFromMovement(movement);
+      workout.addCard(draft);
+      setShowPicker(false);
       scrollToCard(movement.id);
+    } catch (err) {
+      console.error("Error adding exercise:", err);
+      setShowPicker(false);
     }
   };
 

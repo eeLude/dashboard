@@ -252,11 +252,15 @@ export function toDateString(date: Date): string {
 
 /** Safe UUID generator with fallback for non-secure contexts (e.g. mobile HTTP). */
 export function generateUUID(): string {
-  if (
-    typeof crypto !== "undefined" &&
-    typeof crypto.randomUUID === "function"
-  ) {
-    return crypto.randomUUID();
+  try {
+    if (
+      typeof crypto !== "undefined" &&
+      typeof crypto.randomUUID === "function"
+    ) {
+      return crypto.randomUUID();
+    }
+  } catch {
+    // Fall through on non-secure contexts (e.g. mobile HTTP over local network)
   }
   return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
     const r = (Math.random() * 16) | 0;
